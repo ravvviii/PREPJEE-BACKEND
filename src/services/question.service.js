@@ -4,6 +4,7 @@ import * as classRepository from '../repositories/class.repository.js';
 import * as chapterRepository from '../repositories/chapter.repository.js';
 import * as yearRepository from '../repositories/year.repository.js';
 import * as examRepository from '../repositories/exam.repository.js';
+import * as optionService from './option.service.js';
 import { AppError } from '../utils/app-error.js';
 import { trackEvent } from '../modules/analytics/index.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
@@ -85,7 +86,10 @@ export const getPublishedQuestionById = async (id, userId) => {
     difficulty: question.difficulty,
   });
 
-  return serializeQuestion(question);
+  // Never the admin-facing isCorrect flag here — a student shouldn't be able
+  // to inspect the answer before submitting.
+  const options = await optionService.listOptionsForStudent(id);
+  return { ...serializeQuestion(question), options };
 };
 
 // Returns the chapter row (if a chapterId was given) so callers can also
