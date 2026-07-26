@@ -1,5 +1,7 @@
 import { query } from '../utils/db.js';
 
+// Fetches `limit + 1` rows so the service layer can tell whether a next page
+// exists without a separate COUNT query.
 export const findPage = async ({ limit, cursorCreatedAt, cursorId }) => {
   const params = [];
   let whereClause = 'WHERE deleted_at IS NULL';
@@ -11,7 +13,7 @@ export const findPage = async ({ limit, cursorCreatedAt, cursorId }) => {
 
   params.push(limit + 1);
   const { rows } = await query(
-    `SELECT id, name, created_at, updated_at FROM classes
+    `SELECT id, name, created_at, updated_at FROM subjects
      ${whereClause}
      ORDER BY created_at ASC, id ASC
      LIMIT $${params.length}`,
@@ -21,7 +23,7 @@ export const findPage = async ({ limit, cursorCreatedAt, cursorId }) => {
 };
 
 export const findById = async (id) => {
-  const { rows } = await query('SELECT * FROM classes WHERE id = $1 AND deleted_at IS NULL', [
+  const { rows } = await query('SELECT * FROM subjects WHERE id = $1 AND deleted_at IS NULL', [
     id,
   ]);
   return rows[0] ?? null;
@@ -29,20 +31,20 @@ export const findById = async (id) => {
 
 export const findByName = async (name) => {
   const { rows } = await query(
-    'SELECT * FROM classes WHERE name = $1 AND deleted_at IS NULL',
+    'SELECT * FROM subjects WHERE name = $1 AND deleted_at IS NULL',
     [name],
   );
   return rows[0] ?? null;
 };
 
 export const create = async (name) => {
-  const { rows } = await query('INSERT INTO classes (name) VALUES ($1) RETURNING *', [name]);
+  const { rows } = await query('INSERT INTO subjects (name) VALUES ($1) RETURNING *', [name]);
   return rows[0];
 };
 
 export const update = async (id, name) => {
   const { rows } = await query(
-    `UPDATE classes SET name = COALESCE($2, name)
+    `UPDATE subjects SET name = COALESCE($2, name)
      WHERE id = $1 AND deleted_at IS NULL
      RETURNING *`,
     [id, name],
@@ -52,7 +54,7 @@ export const update = async (id, name) => {
 
 export const softDelete = async (id) => {
   const { rows } = await query(
-    `UPDATE classes SET deleted_at = NOW()
+    `UPDATE subjects SET deleted_at = NOW()
      WHERE id = $1 AND deleted_at IS NULL
      RETURNING *`,
     [id],
