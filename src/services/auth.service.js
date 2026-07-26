@@ -6,6 +6,7 @@ import * as adminRepository from '../repositories/admin.repository.js';
 import * as otpRepository from '../repositories/otp.repository.js';
 import * as refreshTokenRepository from '../repositories/refresh-token.repository.js';
 import { sendOtp as sendOtpViaProvider } from '../modules/otp/otp-provider.js';
+import { verifyGoogleIdToken } from '../modules/google-auth/google-auth-provider.js';
 import { hashToken } from '../utils/hash.js';
 import { comparePassword } from '../utils/password.js';
 import {
@@ -59,6 +60,34 @@ export const sendOtp = async (phone) => {
   return { expiresInSeconds: OTP.EXPIRY_SECONDS };
 };
 
+// Shared tail for every login path (OTP, Google, ...): suspension check,
+// token issuance + persistence, and the standard analytics events. `method`
+// tags the LOGIN event so it's distinguishable in Amplitude without being a
+// separate event name.
+const issueSession = async (user, method) => {
+  if (user.suspended_at) {
+    await trackEvent(AMPLITUDE_EVENTS.ERROR_API_LOGIN, user.id, { reason: 'account_suspended' });
+    throw new AppError('This account has been suspended', HTTP_STATUS.FORBIDDEN, 'ACCOUNT_SUSPENDED');
+  }
+
+  const accessToken = signUserAccessToken(user.id);
+  const refreshToken = signRefreshToken(user.id);
+  await refreshTokenRepository.create({
+    userId: user.id,
+    tokenHash: hashToken(refreshToken),
+    expiresAt: getTokenExpiryDate(refreshToken),
+  });
+
+  // Synced on every login (not just signup) so Amplitude always reflects the
+  // current value — lets features be gated/analyzed by cohort, e.g.
+  // "bucket_id < 10" for a staged rollout.
+  await setUserProperties(user.id, { bucket_id: user.bucket_id });
+  await trackEvent(AMPLITUDE_EVENTS.LOGIN, user.id, { method });
+  await trackEvent(AMPLITUDE_EVENTS.SUCCESS_API_LOGIN, user.id);
+
+  return { user, accessToken, refreshToken };
+};
+
 export const verifyOtp = async (phone, code) => {
   const otpRow = await otpRepository.findLatestActiveForPhone(phone);
 
@@ -94,27 +123,38 @@ export const verifyOtp = async (phone, code) => {
     user = await userRepository.create({ phone });
   }
 
-  if (user.suspended_at) {
-    await trackEvent(AMPLITUDE_EVENTS.ERROR_API_LOGIN, user.id, { reason: 'account_suspended' });
-    throw new AppError('This account has been suspended', HTTP_STATUS.FORBIDDEN, 'ACCOUNT_SUSPENDED');
+  return issueSession(user, 'otp');
+};
+
+// Links to an existing phone-created account only when Google itself
+// confirms the email is verified and it matches exactly — an unverified
+// email is not proof of ownership, so that case always creates a fresh
+// account instead of trusting a possibly-spoofed match.
+export const loginWithGoogle = async (idToken) => {
+  const { googleId, email, emailVerified, name, avatarUrl } = await verifyGoogleIdToken(idToken);
+
+  let user = await userRepository.findByGoogleId(googleId);
+
+  if (!user) {
+    const existingByEmail = await userRepository.findByEmail(email);
+
+    if (existingByEmail && emailVerified) {
+      user = await userRepository.linkGoogleId(existingByEmail.id, googleId);
+    } else {
+      // Either nobody has this email yet, or someone does but it isn't
+      // verified — in the latter case the email can't be trusted enough to
+      // link, and can't even be stored on the new row (users.email is
+      // unique), so the new account is created without it.
+      user = await userRepository.createWithGoogle({
+        googleId,
+        email: existingByEmail ? null : email,
+        name,
+        avatarUrl,
+      });
+    }
   }
 
-  const accessToken = signUserAccessToken(user.id);
-  const refreshToken = signRefreshToken(user.id);
-  await refreshTokenRepository.create({
-    userId: user.id,
-    tokenHash: hashToken(refreshToken),
-    expiresAt: getTokenExpiryDate(refreshToken),
-  });
-
-  // Synced on every login (not just signup) so Amplitude always reflects the
-  // current value — lets features be gated/analyzed by cohort, e.g.
-  // "bucket_id < 10" for a staged rollout.
-  await setUserProperties(user.id, { bucket_id: user.bucket_id });
-  await trackEvent(AMPLITUDE_EVENTS.LOGIN, user.id);
-  await trackEvent(AMPLITUDE_EVENTS.SUCCESS_API_LOGIN, user.id);
-
-  return { user, accessToken, refreshToken };
+  return issueSession(user, 'google');
 };
 
 export const refreshUserSession = async (oldRefreshToken) => {

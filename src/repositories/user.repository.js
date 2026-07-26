@@ -12,8 +12,44 @@ export const findById = async (id) => {
   return rows[0] ?? null;
 };
 
+export const findByGoogleId = async (googleId) => {
+  const { rows } = await query(
+    'SELECT * FROM users WHERE google_id = $1 AND deleted_at IS NULL',
+    [googleId],
+  );
+  return rows[0] ?? null;
+};
+
+export const findByEmail = async (email) => {
+  const { rows } = await query('SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL', [
+    email,
+  ]);
+  return rows[0] ?? null;
+};
+
 export const create = async ({ phone }) => {
   const { rows } = await query('INSERT INTO users (phone) VALUES ($1) RETURNING *', [phone]);
+  return rows[0];
+};
+
+export const createWithGoogle = async ({ googleId, email, name, avatarUrl }) => {
+  const { rows } = await query(
+    `INSERT INTO users (google_id, email, name, avatar_url)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [googleId, email, name, avatarUrl],
+  );
+  return rows[0];
+};
+
+// Attaches a Google identity to an existing (phone-created) account — used
+// only when that account's email is confirmed-verified by Google and
+// matches exactly (see auth.service.js's loginWithGoogle).
+export const linkGoogleId = async (id, googleId) => {
+  const { rows } = await query('UPDATE users SET google_id = $2 WHERE id = $1 RETURNING *', [
+    id,
+    googleId,
+  ]);
   return rows[0];
 };
 

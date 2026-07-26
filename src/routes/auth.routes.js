@@ -1,4 +1,4 @@
-import { sendOtp, verifyOtp, refresh, logout } from '../controllers/auth.controller.js';
+import { sendOtp, verifyOtp, googleLogin, refresh, logout } from '../controllers/auth.controller.js';
 
 const phoneSchema = { type: 'string', pattern: '^\\+[1-9]\\d{7,14}$' };
 const otpSchema = { type: 'string', pattern: '^\\d{6}$' };
@@ -36,6 +36,24 @@ export default async function authRoutes(fastify) {
       },
     },
     verifyOtp,
+  );
+
+  fastify.post(
+    '/auth/google',
+    {
+      schema: {
+        description:
+          'Sign in (or sign up) with a Google ID token obtained from the client-side Google Sign-In flow',
+        tags: ['auth'],
+        body: {
+          type: 'object',
+          required: ['idToken'],
+          properties: { idToken: { type: 'string', minLength: 1 } },
+          additionalProperties: false,
+        },
+      },
+    },
+    googleLogin,
   );
 
   fastify.post(

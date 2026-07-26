@@ -19,6 +19,18 @@ export const verifyOtp = async (request, reply) => {
   );
 };
 
+export const googleLogin = async (request, reply) => {
+  const { idToken } = request.body;
+  const { user, accessToken, refreshToken } = await authService.loginWithGoogle(idToken);
+  reply.send(
+    success({
+      accessToken,
+      refreshToken,
+      user: { id: user.id, phone: user.phone, name: user.name, email: user.email },
+    }),
+  );
+};
+
 export const refresh = async (request, reply) => {
   const { refreshToken } = request.body;
   const result = await authService.refreshUserSession(refreshToken);

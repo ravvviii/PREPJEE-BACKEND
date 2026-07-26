@@ -92,7 +92,7 @@ production, set these directly in your hosting platform (see
 | `JWT_ACCESS_EXPIRY` | no (default `15m`) | User access token lifetime. |
 | `JWT_REFRESH_EXPIRY` | no (default `30d`) | User refresh token lifetime. |
 | `ADMIN_JWT_EXPIRY` | no (default `12h`) | Admins get one longer-lived token, no refresh/rotation. |
-| `GOOGLE_CLIENT_ID` | no | Blank until Google sign-in is wired up. |
+| `GOOGLE_CLIENT_ID` | no | Your Google OAuth Client ID. If blank, `POST /auth/google` returns `503 GOOGLE_AUTH_NOT_CONFIGURED` — every other endpoint works fine without it. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | yes | Cloudflare R2 credentials for question/solution image uploads. |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | yes | Use `rzp_test_*` keys outside production. |
 | `AMPLITUDE_API_KEY` | no | Analytics are silently disabled (logged, not sent) if left blank — safe to omit in any environment. |
