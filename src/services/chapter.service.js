@@ -3,7 +3,10 @@ import * as subjectRepository from '../repositories/subject.repository.js';
 import * as classRepository from '../repositories/class.repository.js';
 import { AppError } from '../utils/app-error.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
-import { HTTP_STATUS, PAGINATION } from '../constants/index.js';
+import { cached, bumpCacheVersion } from '../utils/cache.js';
+import { HTTP_STATUS, PAGINATION, CACHE } from '../constants/index.js';
+
+const CACHE_NAMESPACE = 'chapters';
 
 const serializeChapter = (chapter) => ({
   id: chapter.id,
@@ -16,19 +19,22 @@ const serializeChapter = (chapter) => ({
 
 export const listChapters = async ({ limit, cursor, subjectId, classId, search }) => {
   const pageSize = Math.min(limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
-  const decoded = decodeCursor(cursor);
+  const cacheKey = [pageSize, cursor ?? '', subjectId ?? '', classId ?? '', search ?? ''].join(':');
 
-  const rows = await chapterRepository.findPage({
-    limit: pageSize,
-    cursorCreatedAt: decoded?.createdAt,
-    cursorId: decoded?.id,
-    subjectId,
-    classId,
-    search,
+  return cached(CACHE_NAMESPACE, cacheKey, CACHE.REFERENCE_LIST_TTL_SECONDS, async () => {
+    const decoded = decodeCursor(cursor);
+    const rows = await chapterRepository.findPage({
+      limit: pageSize,
+      cursorCreatedAt: decoded?.createdAt,
+      cursorId: decoded?.id,
+      subjectId,
+      classId,
+      search,
+    });
+
+    const { items, nextCursor } = paginate(rows, pageSize);
+    return { items: items.map(serializeChapter), nextCursor };
   });
-
-  const { items, nextCursor } = paginate(rows, pageSize);
-  return { items: items.map(serializeChapter), nextCursor };
 };
 
 const assertSubjectAndClassExist = async (subjectId, classId) => {
@@ -52,6 +58,7 @@ export const createChapter = async ({ subjectId, classId, name }) => {
   }
 
   const chapter = await chapterRepository.create({ subjectId, classId, name });
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeChapter(chapter);
 };
 
@@ -81,6 +88,7 @@ export const updateChapter = async (id, fields) => {
   }
 
   const chapter = await chapterRepository.update(id, fields);
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeChapter(chapter);
 };
 
@@ -89,4 +97,5 @@ export const deleteChapter = async (id) => {
   if (!chapter) {
     throw new AppError('Chapter not found', HTTP_STATUS.NOT_FOUND, 'CHAPTER_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
 };

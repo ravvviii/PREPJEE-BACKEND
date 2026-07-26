@@ -8,7 +8,14 @@ import * as optionService from './option.service.js';
 import { AppError } from '../utils/app-error.js';
 import { trackEvent } from '../modules/analytics/index.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
-import { HTTP_STATUS, PAGINATION, AMPLITUDE_EVENTS } from '../constants/index.js';
+import { cached, bumpCacheVersion } from '../utils/cache.js';
+import { HTTP_STATUS, PAGINATION, AMPLITUDE_EVENTS, CACHE } from '../constants/index.js';
+
+// Only the public, published-questions list is cached — it's the actual hot
+// path (every logged-in student hits it). listAllQuestionsForAdmin stays
+// uncached: admins need to see a just-created draft immediately, and that
+// endpoint's traffic is low enough that caching it wouldn't earn its keep.
+const CACHE_NAMESPACE = 'published_questions';
 
 const serializeQuestion = (question) => ({
   id: question.id,
@@ -50,12 +57,27 @@ export const listPublishedQuestions = async ({
   yearId,
   examId,
   difficulty,
-}) =>
-  listInternal({
-    limit,
-    cursor,
-    filters: { subjectId, classId, chapterId, yearId, examId, difficulty, isPublished: true },
-  });
+}) => {
+  const pageSize = Math.min(limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
+  const cacheKey = [
+    pageSize,
+    cursor ?? '',
+    subjectId ?? '',
+    classId ?? '',
+    chapterId ?? '',
+    yearId ?? '',
+    examId ?? '',
+    difficulty ?? '',
+  ].join(':');
+
+  return cached(CACHE_NAMESPACE, cacheKey, CACHE.QUESTION_LIST_TTL_SECONDS, () =>
+    listInternal({
+      limit,
+      cursor,
+      filters: { subjectId, classId, chapterId, yearId, examId, difficulty, isPublished: true },
+    }),
+  );
+};
 
 export const listAllQuestionsForAdmin = async ({
   limit,
@@ -135,6 +157,7 @@ export const createQuestion = async (createdBy, fields) => {
   assertChapterMatchesSubjectAndClass(chapter, fields.subjectId, fields.classId);
 
   const question = await questionRepository.create({ ...fields, createdBy });
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeQuestion(question);
 };
 
@@ -152,6 +175,7 @@ export const updateQuestion = async (id, fields) => {
   );
 
   const question = await questionRepository.update(id, fields);
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeQuestion(question);
 };
 
@@ -160,6 +184,7 @@ export const deleteQuestion = async (id) => {
   if (!question) {
     throw new AppError('Question not found', HTTP_STATUS.NOT_FOUND, 'QUESTION_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
 };
 
 export const publishQuestion = async (id) => {
@@ -167,6 +192,7 @@ export const publishQuestion = async (id) => {
   if (!question) {
     throw new AppError('Question not found', HTTP_STATUS.NOT_FOUND, 'QUESTION_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeQuestion(question);
 };
 
@@ -175,5 +201,6 @@ export const unpublishQuestion = async (id) => {
   if (!question) {
     throw new AppError('Question not found', HTTP_STATUS.NOT_FOUND, 'QUESTION_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeQuestion(question);
 };

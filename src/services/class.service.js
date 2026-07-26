@@ -1,7 +1,10 @@
 import * as classRepository from '../repositories/class.repository.js';
 import { AppError } from '../utils/app-error.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
-import { HTTP_STATUS, PAGINATION } from '../constants/index.js';
+import { cached, bumpCacheVersion } from '../utils/cache.js';
+import { HTTP_STATUS, PAGINATION, CACHE } from '../constants/index.js';
+
+const CACHE_NAMESPACE = 'classes';
 
 const serializeClass = (classRow) => ({
   id: classRow.id,
@@ -12,16 +15,23 @@ const serializeClass = (classRow) => ({
 
 export const listClasses = async ({ limit, cursor }) => {
   const pageSize = Math.min(limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
-  const decoded = decodeCursor(cursor);
 
-  const rows = await classRepository.findPage({
-    limit: pageSize,
-    cursorCreatedAt: decoded?.createdAt,
-    cursorId: decoded?.id,
-  });
+  return cached(
+    CACHE_NAMESPACE,
+    `${pageSize}:${cursor ?? ''}`,
+    CACHE.REFERENCE_LIST_TTL_SECONDS,
+    async () => {
+      const decoded = decodeCursor(cursor);
+      const rows = await classRepository.findPage({
+        limit: pageSize,
+        cursorCreatedAt: decoded?.createdAt,
+        cursorId: decoded?.id,
+      });
 
-  const { items, nextCursor } = paginate(rows, pageSize);
-  return { items: items.map(serializeClass), nextCursor };
+      const { items, nextCursor } = paginate(rows, pageSize);
+      return { items: items.map(serializeClass), nextCursor };
+    },
+  );
 };
 
 export const createClass = async (name) => {
@@ -33,6 +43,7 @@ export const createClass = async (name) => {
     );
   }
   const classRow = await classRepository.create(name);
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeClass(classRow);
 };
 
@@ -52,6 +63,7 @@ export const updateClass = async (id, name) => {
   if (!classRow) {
     throw new AppError('Class not found', HTTP_STATUS.NOT_FOUND, 'CLASS_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeClass(classRow);
 };
 
@@ -60,4 +72,5 @@ export const deleteClass = async (id) => {
   if (!classRow) {
     throw new AppError('Class not found', HTTP_STATUS.NOT_FOUND, 'CLASS_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
 };

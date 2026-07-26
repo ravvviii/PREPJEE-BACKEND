@@ -1,7 +1,10 @@
 import * as subjectRepository from '../repositories/subject.repository.js';
 import { AppError } from '../utils/app-error.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
-import { HTTP_STATUS, PAGINATION } from '../constants/index.js';
+import { cached, bumpCacheVersion } from '../utils/cache.js';
+import { HTTP_STATUS, PAGINATION, CACHE } from '../constants/index.js';
+
+const CACHE_NAMESPACE = 'subjects';
 
 const serializeSubject = (subject) => ({
   id: subject.id,
@@ -12,16 +15,23 @@ const serializeSubject = (subject) => ({
 
 export const listSubjects = async ({ limit, cursor }) => {
   const pageSize = Math.min(limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
-  const decoded = decodeCursor(cursor);
 
-  const rows = await subjectRepository.findPage({
-    limit: pageSize,
-    cursorCreatedAt: decoded?.createdAt,
-    cursorId: decoded?.id,
-  });
+  return cached(
+    CACHE_NAMESPACE,
+    `${pageSize}:${cursor ?? ''}`,
+    CACHE.REFERENCE_LIST_TTL_SECONDS,
+    async () => {
+      const decoded = decodeCursor(cursor);
+      const rows = await subjectRepository.findPage({
+        limit: pageSize,
+        cursorCreatedAt: decoded?.createdAt,
+        cursorId: decoded?.id,
+      });
 
-  const { items, nextCursor } = paginate(rows, pageSize);
-  return { items: items.map(serializeSubject), nextCursor };
+      const { items, nextCursor } = paginate(rows, pageSize);
+      return { items: items.map(serializeSubject), nextCursor };
+    },
+  );
 };
 
 export const createSubject = async (name) => {
@@ -33,6 +43,7 @@ export const createSubject = async (name) => {
     );
   }
   const subject = await subjectRepository.create(name);
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeSubject(subject);
 };
 
@@ -52,6 +63,7 @@ export const updateSubject = async (id, name) => {
   if (!subject) {
     throw new AppError('Subject not found', HTTP_STATUS.NOT_FOUND, 'SUBJECT_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
   return serializeSubject(subject);
 };
 
@@ -60,4 +72,5 @@ export const deleteSubject = async (id) => {
   if (!subject) {
     throw new AppError('Subject not found', HTTP_STATUS.NOT_FOUND, 'SUBJECT_NOT_FOUND');
   }
+  await bumpCacheVersion(CACHE_NAMESPACE);
 };
