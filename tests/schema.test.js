@@ -139,6 +139,89 @@ test('a user can attempt the same question more than once', async () => {
   assert.ok(rows[0].count >= 2);
 });
 
+test('user_phone is auto-populated on insert for every user_id-referencing table', async () => {
+  const { rows: userRows } = await client.query(
+    `INSERT INTO users (phone) VALUES ($1) RETURNING id, phone`,
+    ['+910000000099'],
+  );
+  const { id: phoneUserId, phone } = userRows[0];
+
+  const {
+    rows: [refreshToken],
+  } = await client.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+     VALUES ($1, $2, NOW() + interval '1 day') RETURNING user_phone`,
+    [phoneUserId, '__SchemaTest token hash__'],
+  );
+  assert.equal(refreshToken.user_phone, phone);
+
+  const {
+    rows: [attempt],
+  } = await client.query(
+    `INSERT INTO attempts (user_id, question_id, is_correct) VALUES ($1, $2, $3) RETURNING user_phone`,
+    [phoneUserId, questionId, true],
+  );
+  assert.equal(attempt.user_phone, phone);
+
+  const {
+    rows: [bookmark],
+  } = await client.query(
+    `INSERT INTO bookmarks (user_id, question_id) VALUES ($1, $2) RETURNING user_phone`,
+    [phoneUserId, questionId],
+  );
+  assert.equal(bookmark.user_phone, phone);
+
+  const {
+    rows: [payment],
+  } = await client.query(
+    `INSERT INTO payments (user_id, provider_order_id, amount)
+     VALUES ($1, $2, $3) RETURNING user_phone`,
+    [phoneUserId, '__SchemaTest order id__', 19900],
+  );
+  assert.equal(payment.user_phone, phone);
+
+  const {
+    rows: [subscription],
+  } = await client.query(
+    `INSERT INTO subscriptions (user_id, expires_at) VALUES ($1, NOW() + interval '30 days') RETURNING user_phone`,
+    [phoneUserId],
+  );
+  assert.equal(subscription.user_phone, phone);
+
+  const {
+    rows: [analyticsLog],
+  } = await client.query(
+    `INSERT INTO analytics_logs (user_id, event_name) VALUES ($1, $2) RETURNING user_phone`,
+    [phoneUserId, '__SCHEMA_TEST_EVENT__'],
+  );
+  assert.equal(analyticsLog.user_phone, phone);
+});
+
+test('changing a user\'s phone propagates to every dependent table\'s user_phone', async () => {
+  const { rows: userRows } = await client.query(
+    `INSERT INTO users (phone) VALUES ($1) RETURNING id`,
+    ['+910000000098'],
+  );
+  const { id: phoneUserId } = userRows[0];
+
+  await client.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+     VALUES ($1, $2, NOW() + interval '1 day')`,
+    [phoneUserId, '__SchemaTest propagate token hash__'],
+  );
+
+  await client.query('UPDATE users SET phone = $1 WHERE id = $2', [
+    '+910000000097',
+    phoneUserId,
+  ]);
+
+  const { rows } = await client.query(
+    'SELECT user_phone FROM refresh_tokens WHERE user_id = $1',
+    [phoneUserId],
+  );
+  assert.equal(rows[0].user_phone, '+910000000097');
+});
+
 test('deleting a question cascades to its options', async () => {
   const {
     rows: [{ id: cascadeQuestionId }],
