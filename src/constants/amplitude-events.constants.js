@@ -1,0 +1,37 @@
+// Every Amplitude event name lives here, and only here — call sites import
+// the constant instead of typing the string, so a typo can't silently create
+// a new event name that never shows up in the Amplitude dashboard.
+//
+// Convention: SCREAMING_SNAKE_CASE, VERB_OBJECT order (matches bhai-backend's
+// real usage — SUBMITTED_CONSULTATION, EDITED_CONSULTATION — not the
+// Title-Case-with-spaces wording used in the original phase doc).
+export const AMPLITUDE_EVENTS = {
+  LOGIN: 'LOGIN',
+  VIEWED_QUESTION: 'VIEWED_QUESTION',
+  SUBMITTED_ANSWER: 'SUBMITTED_ANSWER',
+  VIEWED_SOLUTION: 'VIEWED_SOLUTION',
+  COMPLETED_CHAPTER: 'COMPLETED_CHAPTER',
+  STARTED_SUBSCRIPTION: 'STARTED_SUBSCRIPTION',
+  SUCCEEDED_PAYMENT: 'SUCCEEDED_PAYMENT',
+  CLICKED_SUPPORT_PROFILE: 'CLICKED_SUPPORT_PROFILE',
+
+  // Home-landing event — name pending, add it here once decided:
+  // LANDED_ON_HOME: 'LANDED_ON_HOME',
+
+  // Login Flow
+  LANDED_LOGINM_LOGIN: 'LANDED_LOGINM_LOGIN',
+  SUBMIT_PHONE_LOGIN: 'SUBMIT_PHONE_LOGIN',
+  ERROR_PHONE_LOGIN: 'ERROR_PHONE_LOGIN',
+  LANDED_VERIFYOTP_LOGIN: 'LANDED_VERIFYOTP_LOGIN',
+  SUBMIT_OTP_LOGIN: 'SUBMIT_OTP_LOGIN',
+  SUCCESS_OTP_LOGIN: 'SUCCESS_OTP_LOGIN',
+  FAILED_OTP_LOGIN: 'FAILED_OTP_LOGIN',
+  ERROR_OTP_LOGIN: 'ERROR_OTP_LOGIN',
+  RESEND_OTP_LOGIN: 'RESEND_OTP_LOGIN',
+  CHANGEPHONE_OTP_LOGIN: 'CHANGEPHONE_OTP_LOGIN',
+  SUCCESS_API_LOGIN: 'SUCCESS_API_LOGIN',
+  ERROR_API_LOGIN: 'ERROR_API_LOGIN',
+
+  // Health
+  HEALTH_API_CHECK: 'HEALTH_API_CHECK',
+};
