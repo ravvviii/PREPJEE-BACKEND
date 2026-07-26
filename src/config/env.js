@@ -70,11 +70,10 @@ export const env = {
     publicUrl: readRequired('R2_PUBLIC_URL'),
   },
 
-  // Phase 16 onward.
   razorpay: {
-    keyId: readOptional('RAZORPAY_KEY_ID'),
-    keySecret: readOptional('RAZORPAY_KEY_SECRET'),
-    webhookSecret: readOptional('RAZORPAY_WEBHOOK_SECRET'),
+    keyId: readRequired('RAZORPAY_KEY_ID'),
+    keySecret: readRequired('RAZORPAY_KEY_SECRET'),
+    webhookSecret: readRequired('RAZORPAY_WEBHOOK_SECRET'),
   },
 };
 

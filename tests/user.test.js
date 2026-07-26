@@ -64,6 +64,7 @@ before(async () => {
 after(async () => {
   await pool.query('DELETE FROM attempts WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
+  await pool.query("DELETE FROM subscription_plans WHERE name = '__P6Test Plan__'");
   await pool.query('DELETE FROM questions WHERE id = $1', [questionId]);
   await pool.query('DELETE FROM chapters WHERE id = $1', [chapterId]);
   await pool.query('DELETE FROM subjects WHERE id = $1', [subjectId]);
@@ -188,10 +189,16 @@ test('GET /users/me reflects real attempt stats once attempts exist', async () =
 });
 
 test('GET /users/me reflects an active subscription', async () => {
+  const planId = (
+    await pool.query(
+      "INSERT INTO subscription_plans (name, amount, duration_days) VALUES ('__P6Test Plan__', 49900, 30) RETURNING id",
+    )
+  ).rows[0].id;
+
   await pool.query(
-    `INSERT INTO subscriptions (user_id, plan_type, status, expires_at)
-     VALUES ($1, 'monthly', 'active', NOW() + INTERVAL '30 days')`,
-    [userId],
+    `INSERT INTO subscriptions (user_id, plan_id, status, expires_at)
+     VALUES ($1, $2, 'active', NOW() + INTERVAL '30 days')`,
+    [userId, planId],
   );
 
   const response = await app.inject({

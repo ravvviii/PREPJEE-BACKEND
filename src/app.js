@@ -4,6 +4,7 @@ import { errorHandler, notFoundHandler } from './middlewares/error-handler.js';
 import securityPlugins from './plugins/security.js';
 import docsPlugin from './plugins/docs.js';
 import multipartPlugin from './plugins/multipart.js';
+import rawBodyPlugin from './plugins/raw-body.js';
 import registerRoutes from './routes/index.js';
 
 export const buildApp = () => {
@@ -20,6 +21,7 @@ export const buildApp = () => {
   // handling — every multipart upload fails with a 415 Unsupported Media
   // Type. Verified by isolating the plugin stack; don't reorder this.
   app.register(multipartPlugin);
+  app.register(rawBodyPlugin);
   app.register(securityPlugins);
   app.register(docsPlugin);
   app.register(registerRoutes);
