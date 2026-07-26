@@ -23,7 +23,14 @@ export const buildApp = () => {
   app.register(multipartPlugin);
   app.register(rawBodyPlugin);
   app.register(securityPlugins);
-  app.register(docsPlugin);
+  // Swagger UI serves static files via @fastify/static, which has an open,
+  // unpatched-upstream path-traversal CVE as of this build (no fixed version
+  // @fastify/swagger-ui's dependency range allows yet) — and the full API
+  // surface (including every admin route) isn't something to expose publicly
+  // anyway. Docs stay available in dev/test, off in production.
+  if (!env.isProd) {
+    app.register(docsPlugin);
+  }
   app.register(registerRoutes);
 
   app.setErrorHandler(errorHandler);

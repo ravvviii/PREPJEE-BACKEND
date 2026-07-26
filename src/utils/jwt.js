@@ -36,7 +36,10 @@ export const signAdminAccessToken = (adminId, role) =>
     { expiresIn: env.jwt.adminExpiry },
   );
 
-export const verifyToken = (token, secret) => jwt.verify(token, secret);
+// algorithms pinned explicitly rather than relying on jsonwebtoken's
+// type-based inference — defense in depth against any alg-confusion class
+// of attack, regardless of library version.
+export const verifyToken = (token, secret) => jwt.verify(token, secret, { algorithms: ['HS256'] });
 
 // exp claim, in ms — used to populate refresh_tokens.expires_at so the DB
 // row's lifetime always matches the JWT's own expiry exactly.

@@ -12,6 +12,18 @@ export const getStatsByUserId = async (userId) => {
   return rows[0];
 };
 
+// Checked before inserting a new attempt — tells the caller whether this is
+// the user's first-ever attempt at this question, which matters for
+// deciding whether a chapter just became newly "completed" (see
+// attempt.service.js / progress.repository.js's isChapterComplete).
+export const existsForUserAndQuestion = async (userId, questionId) => {
+  const { rows } = await query(
+    'SELECT 1 FROM attempts WHERE user_id = $1 AND question_id = $2 LIMIT 1',
+    [userId, questionId],
+  );
+  return rows.length > 0;
+};
+
 // No unique constraint on (user_id, question_id) — retries are allowed, so
 // this is an append-only log, never an upsert.
 export const create = async ({ userId, questionId, selectedOptionId, isCorrect, timeTakenSeconds }) => {

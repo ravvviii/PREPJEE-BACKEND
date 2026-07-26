@@ -3,6 +3,7 @@ import * as questionRepository from '../repositories/question.repository.js';
 import * as optionRepository from '../repositories/option.repository.js';
 import * as chapterRepository from '../repositories/chapter.repository.js';
 import * as solutionRepository from '../repositories/solution.repository.js';
+import * as progressRepository from '../repositories/progress.repository.js';
 import { AppError } from '../utils/app-error.js';
 import { trackEvent } from '../modules/analytics/index.js';
 import { HTTP_STATUS, AMPLITUDE_EVENTS } from '../constants/index.js';
@@ -21,6 +22,14 @@ export const submitAnswer = async (userId, questionId, { selectedOptionId, timeT
   }
 
   const allOptions = await optionRepository.findByQuestionId(questionId);
+
+  // Read before inserting the new attempt below — tells us whether this
+  // submission is what could newly complete the chapter (see the check
+  // after the insert).
+  const hadAttemptedBefore = await attemptRepository.existsForUserAndQuestion(
+    userId,
+    questionId,
+  );
 
   let isCorrect = false;
   if (selectedOptionId) {
@@ -53,6 +62,23 @@ export const submitAnswer = async (userId, questionId, { selectedOptionId, timeT
     question_id: questionId,
     is_correct: isCorrect,
   });
+
+  if (solution) {
+    await trackEvent(AMPLITUDE_EVENTS.VIEWED_SOLUTION, userId, { question_id: questionId });
+  }
+
+  // Only worth checking if this was a genuinely new question for the user —
+  // otherwise the chapter's attempted-question count hasn't changed, so it
+  // can't be the attempt that newly completes it (that would have already
+  // fired on whichever earlier attempt did change the count).
+  if (!hadAttemptedBefore) {
+    const nowComplete = await progressRepository.isChapterComplete(userId, question.chapter_id);
+    if (nowComplete) {
+      await trackEvent(AMPLITUDE_EVENTS.COMPLETED_CHAPTER, userId, {
+        chapter_id: question.chapter_id,
+      });
+    }
+  }
 
   return {
     attemptId: attempt.id,

@@ -6,7 +6,7 @@ import { redis, closeRedis } from '../src/config/redis.js';
 import { getLastSentOtp } from '../src/modules/otp/otp-provider.js';
 import { hashPassword } from '../src/utils/password.js';
 import { signUserAccessToken, signAdminAccessToken } from '../src/utils/jwt.js';
-import { OTP } from '../src/constants/index.js';
+import { OTP, RATE_LIMIT } from '../src/constants/index.js';
 
 const TEST_PHONE = '+911234500001';
 const TEST_PHONE_ATTEMPTS = '+911234500002';
@@ -312,6 +312,29 @@ test('POST /admin/auth/login succeeds with the right credentials', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(body.data.admin.email, TEST_ADMIN_EMAIL);
   assert.ok(body.data.accessToken);
+});
+
+test('POST /admin/auth/login rate-limits repeated attempts against the same email', async () => {
+  const rateLimitTestEmail = 'p18-rate-limit-test-admin@test.local';
+
+  // ADMIN_LOGIN_MAX wrong-password attempts should all still be evaluated
+  // normally (401s); the next one past the limit gets rejected before ever
+  // reaching the login logic.
+  for (let i = 0; i < RATE_LIMIT.ADMIN_LOGIN_MAX; i += 1) {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/auth/login',
+      payload: { email: rateLimitTestEmail, password: 'whatever123' },
+    });
+    assert.equal(response.statusCode, 401);
+  }
+
+  const blockedResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/login',
+    payload: { email: rateLimitTestEmail, password: 'whatever123' },
+  });
+  assert.equal(blockedResponse.statusCode, 429);
 });
 
 // --- Middleware ---

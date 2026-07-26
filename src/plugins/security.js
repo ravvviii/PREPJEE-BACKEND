@@ -2,12 +2,23 @@ import fp from 'fastify-plugin';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import compress from '@fastify/compress';
+import rateLimit from '@fastify/rate-limit';
 import { env } from '../config/env.js';
+import { RATE_LIMIT } from '../constants/index.js';
 
 async function securityPlugins(fastify) {
   await fastify.register(cors, { origin: env.cors.origin });
   await fastify.register(helmet);
   await fastify.register(compress);
+
+  // Baseline, applies to every route unless overridden per-route via
+  // `config: { rateLimit: {...} }` (see admin-auth.routes.js for the
+  // stricter override on login — the one endpoint with no other brute-force
+  // defense, unlike OTP verify which already has its own attempt-count cap).
+  await fastify.register(rateLimit, {
+    max: RATE_LIMIT.GLOBAL_MAX,
+    timeWindow: RATE_LIMIT.GLOBAL_WINDOW_MS,
+  });
 }
 
 // Without fastify-plugin, `app.register(securityPlugins)` creates its own

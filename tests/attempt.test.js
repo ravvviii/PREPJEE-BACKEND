@@ -4,6 +4,7 @@ import { buildApp } from '../src/app.js';
 import { pool, closeDatabase } from '../src/config/database.js';
 import { closeRedis } from '../src/config/redis.js';
 import { signUserAccessToken } from '../src/utils/jwt.js';
+import * as progressRepository from '../src/repositories/progress.repository.js';
 
 const TEST_ADMIN_EMAIL = 'p13-test-admin@test.local';
 const TEST_USER_PHONE = '+911234599013';
@@ -247,6 +248,24 @@ test('GET /chapters/:id/accuracy rejects a request with no token', async () => {
     url: `/api/v1/chapters/${chapterId}/accuracy`,
   });
   assert.equal(response.statusCode, 401);
+});
+
+test('chapter is not yet complete after attempting only one of its two published questions', async () => {
+  const complete = await progressRepository.isChapterComplete(userId, chapterId);
+  assert.equal(complete, false);
+});
+
+test('POST /questions/:id/attempts on the chapter\'s last unattempted published question completes it', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/v1/questions/${otherQuestionId}/attempts`,
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { selectedOptionId: foreignOptionId },
+  });
+  assert.equal(response.statusCode, 201);
+
+  const complete = await progressRepository.isChapterComplete(userId, chapterId);
+  assert.equal(complete, true);
 });
 
 test('GET /chapters/:id/accuracy 404s for a chapter that does not exist', async () => {

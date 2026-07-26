@@ -44,6 +44,24 @@ export const getCompletedChapters = async (userId) => {
   return rows;
 };
 
+// Scoped to a single chapter — much cheaper than getCompletedChapters above
+// when the caller (attempt.service.js) only needs to know about the one
+// chapter a just-submitted attempt belongs to, to decide whether to fire
+// COMPLETED_CHAPTER.
+export const isChapterComplete = async (userId, chapterId) => {
+  const { rows } = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM questions
+        WHERE chapter_id = $2 AND is_published = TRUE AND deleted_at IS NULL) AS total_published,
+       (SELECT COUNT(DISTINCT a.question_id)::int FROM attempts a
+        JOIN questions q ON q.id = a.question_id
+        WHERE a.user_id = $1 AND q.chapter_id = $2) AS attempted_count`,
+    [userId, chapterId],
+  );
+  const { total_published: totalPublished, attempted_count: attemptedCount } = rows[0];
+  return totalPublished > 0 && attemptedCount >= totalPublished;
+};
+
 // Denominator for progressPercent — scoped to the user's own class if set,
 // otherwise the whole published question bank.
 export const getTotalPublishedQuestions = async ({ classId }) => {

@@ -27,15 +27,25 @@ if (!Number.isInteger(port) || port <= 0) {
   throw new Error(`PORT must be a positive integer, got "${process.env.PORT}"`);
 }
 
+const isProd = nodeEnv === 'production';
+const corsOrigin = readOptional('CORS_ORIGIN', '*');
+
+// A wildcard origin in production would let any website make authenticated
+// cross-origin requests on a logged-in user's behalf — fine for local dev,
+// never fine once this is reachable from the public internet.
+if (isProd && corsOrigin === '*') {
+  throw new Error('CORS_ORIGIN must be set to a specific origin (not "*") when NODE_ENV=production');
+}
+
 export const env = {
   nodeEnv,
   isDev: nodeEnv === 'development',
-  isProd: nodeEnv === 'production',
+  isProd,
   isTest: nodeEnv === 'test',
   port,
 
   cors: {
-    origin: readOptional('CORS_ORIGIN', '*'),
+    origin: corsOrigin,
   },
 
   amplitude: {
