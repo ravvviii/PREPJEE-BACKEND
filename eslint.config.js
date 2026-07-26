@@ -12,6 +12,10 @@ export default [
         console: 'readonly',
         Buffer: 'readonly',
         __dirname: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     rules: {
