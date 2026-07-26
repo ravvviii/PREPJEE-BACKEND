@@ -52,8 +52,8 @@ services:
       - key: ADMIN_JWT_EXPIRY
         value: 12h
 
-      # Optional — leave blank in the Render dashboard until Google sign-in
-      # is wired up.
+      # Your Google OAuth Client ID — optional; POST /auth/google returns
+      # 503 GOOGLE_AUTH_NOT_CONFIGURED if left blank, nothing else depends on it.
       - key: GOOGLE_CLIENT_ID
         sync: false
 
