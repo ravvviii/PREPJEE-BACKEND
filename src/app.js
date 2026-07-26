@@ -3,6 +3,7 @@ import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler.js';
 import securityPlugins from './plugins/security.js';
 import docsPlugin from './plugins/docs.js';
+import multipartPlugin from './plugins/multipart.js';
 import registerRoutes from './routes/index.js';
 
 export const buildApp = () => {
@@ -13,6 +14,12 @@ export const buildApp = () => {
     },
   });
 
+  // multipart MUST be registered before securityPlugins: @fastify/compress
+  // (inside securityPlugins) wraps the request stream for decompression, and
+  // if it registers first, it breaks @fastify/multipart's own stream
+  // handling — every multipart upload fails with a 415 Unsupported Media
+  // Type. Verified by isolating the plugin stack; don't reorder this.
+  app.register(multipartPlugin);
   app.register(securityPlugins);
   app.register(docsPlugin);
   app.register(registerRoutes);

@@ -2,8 +2,10 @@ import 'dotenv/config';
 
 const NODE_ENVS = ['development', 'test', 'production'];
 
+// Trimmed defensively — a stray leading/trailing space pasted into .env
+// (easy to do by accident) would otherwise silently break credential auth.
 const readRequired = (key) => {
-  const value = process.env[key];
+  const value = process.env[key]?.trim();
   if (value === undefined || value === '') {
     throw new Error(`Missing required environment variable: ${key}`);
   }
@@ -11,7 +13,7 @@ const readRequired = (key) => {
 };
 
 const readOptional = (key, fallback = undefined) => {
-  const value = process.env[key];
+  const value = process.env[key]?.trim();
   return value === undefined || value === '' ? fallback : value;
 };
 
@@ -59,13 +61,12 @@ export const env = {
     clientId: readOptional('GOOGLE_CLIENT_ID'),
   },
 
-  // Phase 5 onward.
   r2: {
-    accountId: readOptional('R2_ACCOUNT_ID'),
-    accessKeyId: readOptional('R2_ACCESS_KEY_ID'),
-    secretAccessKey: readOptional('R2_SECRET_ACCESS_KEY'),
-    bucketName: readOptional('R2_BUCKET_NAME'),
-    publicUrl: readOptional('R2_PUBLIC_URL'),
+    accountId: readRequired('R2_ACCOUNT_ID'),
+    accessKeyId: readRequired('R2_ACCESS_KEY_ID'),
+    secretAccessKey: readRequired('R2_SECRET_ACCESS_KEY'),
+    bucketName: readRequired('R2_BUCKET_NAME'),
+    publicUrl: readRequired('R2_PUBLIC_URL'),
   },
 
   // Phase 16 onward.

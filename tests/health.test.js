@@ -26,7 +26,7 @@ test('GET /health returns the standard success envelope', async () => {
   await app.close();
 });
 
-test('GET /health/ready returns 200 with both dependencies ok', async () => {
+test('GET /health/ready returns 200 with all dependencies ok', async () => {
   const app = buildApp();
 
   const response = await app.inject({ method: 'GET', url: '/health/ready' });
@@ -37,6 +37,7 @@ test('GET /health/ready returns 200 with both dependencies ok', async () => {
   assert.equal(body.data.status, 'ready');
   assert.equal(body.data.dependencies.database, 'ok');
   assert.equal(body.data.dependencies.redis, 'ok');
+  assert.equal(body.data.dependencies.r2, 'ok');
 
   await app.close();
 });
