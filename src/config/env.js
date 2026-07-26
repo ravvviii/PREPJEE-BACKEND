@@ -31,6 +31,7 @@ export const env = {
   nodeEnv,
   isDev: nodeEnv === 'development',
   isProd: nodeEnv === 'production',
+  isTest: nodeEnv === 'test',
   port,
 
   cors: {

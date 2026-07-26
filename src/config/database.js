@@ -14,7 +14,7 @@ export const pool = new Pool({
   // (the pool hands the client to its caller as soon as it connects, without
   // waiting for a 'connect' listener's query to finish).
   options: `-c timezone=${DB_TIMEZONE}`,
-  max: DATABASE_POOL.MAX_CLIENTS,
+  max: env.isTest ? DATABASE_POOL.TEST_MAX_CLIENTS : DATABASE_POOL.MAX_CLIENTS,
   idleTimeoutMillis: DATABASE_POOL.IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: DATABASE_POOL.CONNECTION_TIMEOUT_MS,
   statement_timeout: DATABASE_POOL.STATEMENT_TIMEOUT_MS,
