@@ -12,6 +12,7 @@ import adminChapterRoutes from './admin-chapter.routes.js';
 import questionRoutes from './question.routes.js';
 import adminQuestionRoutes from './admin-question.routes.js';
 import adminOptionRoutes from './admin-option.routes.js';
+import adminSolutionRoutes from './admin-solution.routes.js';
 
 // Each phase adds its own `xRoutes` import + `v1.register(...)` line here.
 // Nothing outside this file needs to know the version prefix exists.
@@ -29,7 +30,8 @@ async function v1Routes(v1) {
   v1.register(questionRoutes);
   v1.register(adminQuestionRoutes);
   v1.register(adminOptionRoutes);
-  // Phase 12: v1.register(solutionRoutes)
+  v1.register(adminSolutionRoutes);
+  // Phase 13: v1.register(attemptRoutes)
   // ...
 }
 
