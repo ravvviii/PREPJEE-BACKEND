@@ -16,7 +16,7 @@ import {
   getTokenExpiryDate,
 } from '../utils/jwt.js';
 import { AppError } from '../utils/app-error.js';
-import { trackEvent } from '../modules/analytics/index.js';
+import { trackEvent, setUserProperties } from '../modules/analytics/index.js';
 import {
   AMPLITUDE_EVENTS,
   OTP,
@@ -102,6 +102,10 @@ export const verifyOtp = async (phone, code) => {
     expiresAt: getTokenExpiryDate(refreshToken),
   });
 
+  // Synced on every login (not just signup) so Amplitude always reflects the
+  // current value — lets features be gated/analyzed by cohort, e.g.
+  // "bucket_id < 10" for a staged rollout.
+  await setUserProperties(user.id, { bucket_id: user.bucket_id });
   await trackEvent(AMPLITUDE_EVENTS.LOGIN, user.id);
   await trackEvent(AMPLITUDE_EVENTS.SUCCESS_API_LOGIN, user.id);
 

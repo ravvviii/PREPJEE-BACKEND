@@ -14,6 +14,7 @@ const serializeProfile = (user, subscription, stats) => ({
   avatarUrl: user.avatar_url,
   classId: user.class_id,
   targetExamId: user.target_exam_id,
+  bucketId: user.bucket_id,
   subscription: {
     status: subscription ? subscription.status : 'none',
     expiresAt: subscription ? subscription.expires_at : null,

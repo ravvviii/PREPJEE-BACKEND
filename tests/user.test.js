@@ -94,6 +94,22 @@ test('GET /users/me returns the profile with zeroed stats and no subscription', 
   assert.equal(body.data.subscription.status, 'none');
   assert.equal(body.data.stats.totalAttempts, 0);
   assert.equal(body.data.stats.accuracyPercent, 0);
+  assert.ok(Number.isInteger(body.data.bucketId));
+  assert.ok(body.data.bucketId >= 0 && body.data.bucketId <= 99);
+});
+
+test('PUT /users/profile silently ignores an attempt to set bucketId directly', async () => {
+  const before = await pool.query('SELECT bucket_id FROM users WHERE id = $1', [userId]);
+
+  const response = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/users/profile',
+    headers: { authorization: `Bearer ${accessToken}` },
+    payload: { bucketId: 0, name: 'Bucket Attempt' },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.bucketId, before.rows[0].bucket_id);
 });
 
 test('PUT /users/profile updates name/email and reflects it back', async () => {
