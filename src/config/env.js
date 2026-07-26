@@ -47,12 +47,13 @@ export const env = {
     url: readRequired('REDIS_URL'),
   },
 
-  // Phase 4 onward.
   jwt: {
-    accessSecret: readOptional('JWT_ACCESS_SECRET'),
-    refreshSecret: readOptional('JWT_REFRESH_SECRET'),
+    accessSecret: readRequired('JWT_ACCESS_SECRET'),
+    refreshSecret: readRequired('JWT_REFRESH_SECRET'),
     accessExpiry: readOptional('JWT_ACCESS_EXPIRY', '15m'),
     refreshExpiry: readOptional('JWT_REFRESH_EXPIRY', '30d'),
+    // Admins re-log-in instead of refreshing — no rotation, so a longer expiry.
+    adminExpiry: readOptional('ADMIN_JWT_EXPIRY', '12h'),
   },
   google: {
     clientId: readOptional('GOOGLE_CLIENT_ID'),

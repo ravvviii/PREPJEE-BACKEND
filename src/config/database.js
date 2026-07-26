@@ -6,6 +6,14 @@ const { Pool } = pg;
 
 export const pool = new Pool({
   connectionString: env.database.url,
+  // Belt-and-suspenders alongside the database-level default (set in the
+  // users_and_admins migration): pin every connection to IST via the
+  // connection's own startup parameters, applied by Postgres before the
+  // connection is usable — NOT a post-connect `client.query('SET ...')`,
+  // which would race against the very first real query on that same client
+  // (the pool hands the client to its caller as soon as it connects, without
+  // waiting for a 'connect' listener's query to finish).
+  options: `-c timezone=${DB_TIMEZONE}`,
   max: DATABASE_POOL.MAX_CLIENTS,
   idleTimeoutMillis: DATABASE_POOL.IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: DATABASE_POOL.CONNECTION_TIMEOUT_MS,
@@ -16,15 +24,6 @@ pool.on('error', (error) => {
   // Fires on idle-client errors (e.g. the DB restarts) — must be handled or
   // an unhandled 'error' event crashes the whole process.
   console.error('[Postgres] Unexpected error on idle client', error.message);
-});
-
-// Belt-and-suspenders alongside the database-level default (set in the
-// users_and_admins migration): every client this pool hands out is explicitly
-// pinned to IST too, regardless of what the connected database's default is.
-pool.on('connect', (client) => {
-  client.query(`SET timezone = '${DB_TIMEZONE}'`).catch((error) => {
-    console.error('[Postgres] Failed to set session timezone', error.message);
-  });
 });
 
 export const checkDatabaseConnection = async () => {
