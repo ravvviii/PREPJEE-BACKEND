@@ -18,3 +18,9 @@ export const findByTokenHash = async (tokenHash) => {
 export const revoke = async (id) => {
   await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [id]);
 };
+
+export const revokeAllForUser = async (userId) => {
+  await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [
+    userId,
+  ]);
+};

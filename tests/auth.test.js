@@ -11,7 +11,15 @@ import { OTP } from '../src/constants/index.js';
 const TEST_PHONE = '+911234500001';
 const TEST_PHONE_ATTEMPTS = '+911234500002';
 const TEST_PHONE_EXPIRY = '+911234500003';
-const ALL_TEST_PHONES = [TEST_PHONE, TEST_PHONE_ATTEMPTS, TEST_PHONE_EXPIRY];
+const TEST_PHONE_SUSPENDED = '+911234500004';
+const TEST_PHONE_SUSPENDED_REFRESH = '+911234500005';
+const ALL_TEST_PHONES = [
+  TEST_PHONE,
+  TEST_PHONE_ATTEMPTS,
+  TEST_PHONE_EXPIRY,
+  TEST_PHONE_SUSPENDED,
+  TEST_PHONE_SUSPENDED_REFRESH,
+];
 const TEST_ADMIN_EMAIL = 'phase4-test-admin@test.local';
 const TEST_ADMIN_PASSWORD = 'correct-horse-battery-staple';
 
@@ -198,6 +206,76 @@ test('POST /auth/verify-otp rejects an expired code', async () => {
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'OTP_EXPIRED');
+});
+
+test('POST /auth/verify-otp rejects a suspended account', async () => {
+  await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/send-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED },
+  });
+  const { code } = getLastSentOtp();
+
+  // First verify creates the user; suspend it directly, then verify again
+  // with a fresh OTP to hit the suspended-account check in verifyOtp.
+  await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/verify-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED, otp: code },
+  });
+  await pool.query('UPDATE users SET suspended_at = NOW() WHERE phone = $1', [
+    TEST_PHONE_SUSPENDED,
+  ]);
+
+  // Bypass the real 60s resend cooldown — this test only cares about the
+  // suspended-account check further downstream, not the cooldown itself.
+  await redis.del(`otp:cooldown:${TEST_PHONE_SUSPENDED}`);
+  await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/send-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED },
+  });
+  const { code: secondCode } = getLastSentOtp();
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/verify-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED, otp: secondCode },
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.json().error.code, 'ACCOUNT_SUSPENDED');
+});
+
+test('POST /auth/refresh rejects a refresh token belonging to a since-suspended user', async () => {
+  // A distinct phone number from the test above — avoids colliding with its
+  // still-active OTP resend cooldown for the same phone.
+  await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/send-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED_REFRESH },
+  });
+  const { code } = getLastSentOtp();
+
+  const verifyResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/verify-otp',
+    payload: { phone: TEST_PHONE_SUSPENDED_REFRESH, otp: code },
+  });
+  const { refreshToken } = verifyResponse.json().data;
+
+  await pool.query('UPDATE users SET suspended_at = NOW() WHERE phone = $1', [
+    TEST_PHONE_SUSPENDED_REFRESH,
+  ]);
+
+  const refreshResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/refresh',
+    payload: { refreshToken },
+  });
+
+  assert.equal(refreshResponse.statusCode, 403);
+  assert.equal(refreshResponse.json().error.code, 'ACCOUNT_SUSPENDED');
 });
 
 test('POST /admin/auth/login rejects an unknown email and a wrong password identically', async () => {

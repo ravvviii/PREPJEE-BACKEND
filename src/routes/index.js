@@ -20,6 +20,8 @@ import subscriptionPlanRoutes from './subscription-plan.routes.js';
 import adminSubscriptionPlanRoutes from './admin-subscription-plan.routes.js';
 import paymentRoutes from './payment.routes.js';
 import adminSubscriptionRoutes from './admin-subscription.routes.js';
+import adminDashboardRoutes from './admin-dashboard.routes.js';
+import adminUserRoutes from './admin-user.routes.js';
 
 // Each phase adds its own `xRoutes` import + `v1.register(...)` line here.
 // Nothing outside this file needs to know the version prefix exists.
@@ -45,7 +47,9 @@ async function v1Routes(v1) {
   v1.register(adminSubscriptionPlanRoutes);
   v1.register(paymentRoutes);
   v1.register(adminSubscriptionRoutes);
-  // Phase 17: v1.register(adminDashboardRoutes)
+  v1.register(adminDashboardRoutes);
+  v1.register(adminUserRoutes);
+  // Phase 18: v1.register(...)
   // ...
 }
 

@@ -94,6 +94,11 @@ export const verifyOtp = async (phone, code) => {
     user = await userRepository.create({ phone });
   }
 
+  if (user.suspended_at) {
+    await trackEvent(AMPLITUDE_EVENTS.ERROR_API_LOGIN, user.id, { reason: 'account_suspended' });
+    throw new AppError('This account has been suspended', HTTP_STATUS.FORBIDDEN, 'ACCOUNT_SUSPENDED');
+  }
+
   const accessToken = signUserAccessToken(user.id);
   const refreshToken = signRefreshToken(user.id);
   await refreshTokenRepository.create({
@@ -132,6 +137,11 @@ export const refreshUserSession = async (oldRefreshToken) => {
       HTTP_STATUS.UNAUTHORIZED,
       'INVALID_REFRESH_TOKEN',
     );
+  }
+
+  const user = await userRepository.findById(payload.sub);
+  if (!user || user.suspended_at) {
+    throw new AppError('This account has been suspended', HTTP_STATUS.FORBIDDEN, 'ACCOUNT_SUSPENDED');
   }
 
   // Rotation: the old token is dead the moment it's used, whether or not the
