@@ -15,6 +15,7 @@ import adminOptionRoutes from './admin-option.routes.js';
 import adminSolutionRoutes from './admin-solution.routes.js';
 import attemptRoutes from './attempt.routes.js';
 import progressRoutes from './progress.routes.js';
+import bookmarkRoutes from './bookmark.routes.js';
 
 // Each phase adds its own `xRoutes` import + `v1.register(...)` line here.
 // Nothing outside this file needs to know the version prefix exists.
@@ -35,7 +36,8 @@ async function v1Routes(v1) {
   v1.register(adminSolutionRoutes);
   v1.register(attemptRoutes);
   v1.register(progressRoutes);
-  // Phase 15: v1.register(bookmarkRoutes)
+  v1.register(bookmarkRoutes);
+  // Phase 16: v1.register(razorpayRoutes)
   // ...
 }
 
