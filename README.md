@@ -83,7 +83,7 @@ production, set these directly in your hosting platform (see
 | --- | --- | --- |
 | `NODE_ENV` | yes | `development` \| `test` \| `production`. Several behaviors key off this — see below. |
 | `PORT` | no (default `4000`) | Most PaaS providers (including Render) inject their own `PORT` — don't hardcode one in production. |
-| `CORS_ORIGIN` | yes | A specific origin in production — **the app refuses to boot if this is `*` and `NODE_ENV=production`** (see Phase 18's hardening). `*` is fine for local dev. |
+| `CORS_ORIGIN` | yes | One origin, or several **comma-separated** (e.g. `https://prepjee.in,http://localhost:5173` — handy for allowing a local frontend dev server to hit a deployed backend alongside the real production origin). **The app refuses to boot if `*` appears anywhere in the list and `NODE_ENV=production`** (see Phase 18's hardening). `*` alone is fine for local dev. |
 | `APP_VERSION` | no | Cosmetic — shown in the Swagger spec. |
 | `DATABASE_URL` | yes | `postgres://user:pass@host:port/db` |
 | `REDIS_URL` | yes | `redis://host:port` |

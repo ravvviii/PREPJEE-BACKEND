@@ -23,8 +23,10 @@ services:
       - key: APP_VERSION
         value: 1.0.0
 
-      # Must be a specific origin, never "*" — env.js refuses to boot in
-      # production with a wildcard (see Phase 18's CORS hardening guard).
+      # One origin, or several comma-separated (e.g. to also allow a local
+      # frontend dev server: "https://prepjee.in,http://localhost:5173").
+      # Never "*" here — env.js refuses to boot in production if a wildcard
+      # appears anywhere in the list (see Phase 18's CORS hardening guard).
       - key: CORS_ORIGIN
         sync: false
 

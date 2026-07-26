@@ -28,13 +28,20 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 const isProd = nodeEnv === 'production';
-const corsOrigin = readOptional('CORS_ORIGIN', '*');
+
+// Comma-separated so more than one frontend origin can be trusted at once —
+// e.g. the real production frontend AND a developer's local dev server
+// while it isn't deployed yet. @fastify/cors accepts an array directly.
+const corsOrigins = readOptional('CORS_ORIGIN', '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // A wildcard origin in production would let any website make authenticated
 // cross-origin requests on a logged-in user's behalf — fine for local dev,
 // never fine once this is reachable from the public internet.
-if (isProd && corsOrigin === '*') {
-  throw new Error('CORS_ORIGIN must be set to a specific origin (not "*") when NODE_ENV=production');
+if (isProd && corsOrigins.includes('*')) {
+  throw new Error('CORS_ORIGIN must not include "*" when NODE_ENV=production');
 }
 
 export const env = {
@@ -45,7 +52,10 @@ export const env = {
   port,
 
   cors: {
-    origin: corsOrigin,
+    // Always an array — @fastify/cors normalizes an array containing '*'
+    // back to true wildcard-allow-all internally, so this doesn't change
+    // local dev's default behavior.
+    origin: corsOrigins,
   },
 
   amplitude: {

@@ -34,7 +34,7 @@ const importEnvIn = (extraEnv) =>
 test('env.js refuses to boot with a wildcard CORS_ORIGIN in production', async () => {
   await assert.rejects(
     importEnvIn({ NODE_ENV: 'production', CORS_ORIGIN: '*' }),
-    (error) => error.stderr.includes('CORS_ORIGIN must be set to a specific origin'),
+    (error) => error.stderr.includes('CORS_ORIGIN must not include "*"'),
   );
 });
 
@@ -46,4 +46,20 @@ test('env.js boots fine with a specific CORS_ORIGIN in production', async () => 
 
 test('env.js boots fine with a wildcard CORS_ORIGIN outside production', async () => {
   await assert.doesNotReject(importEnvIn({ NODE_ENV: 'development', CORS_ORIGIN: '*' }));
+});
+
+test('env.js accepts a comma-separated CORS_ORIGIN list in production', async () => {
+  await assert.doesNotReject(
+    importEnvIn({
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://prepjee.in,http://localhost:5173',
+    }),
+  );
+});
+
+test('env.js still refuses to boot if "*" is one of several comma-separated origins in production', async () => {
+  await assert.rejects(
+    importEnvIn({ NODE_ENV: 'production', CORS_ORIGIN: 'https://prepjee.in,*' }),
+    (error) => error.stderr.includes('CORS_ORIGIN must not include "*"'),
+  );
 });
