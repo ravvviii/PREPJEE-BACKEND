@@ -40,13 +40,11 @@ export const env = {
     appVersion: readOptional('APP_VERSION', '1.0.0'),
   },
 
-  // Phase 2 onward — read here now so every credential lives in this one file,
-  // but not yet required(): Phase 1 has no DB/Redis connection code to fail on.
   database: {
-    url: readOptional('DATABASE_URL'),
+    url: readRequired('DATABASE_URL'),
   },
   redis: {
-    url: readOptional('REDIS_URL'),
+    url: readRequired('REDIS_URL'),
   },
 
   // Phase 4 onward.

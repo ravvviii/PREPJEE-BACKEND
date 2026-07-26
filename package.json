@@ -9,7 +9,11 @@
     "start": "node src/server.js",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate:create": "node-pg-migrate create -j sql",
+    "migrate:up": "node-pg-migrate up",
+    "migrate:down": "node-pg-migrate down",
+    "seed": "node seeds/run-seeds.js"
   },
   "license": "ISC",
   "dependencies": {
@@ -21,6 +25,9 @@
     "amplitude": "^6.0.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
+    "ioredis": "^5.11.1",
+    "node-pg-migrate": "^9.0.0",
+    "pg": "^8.22.0",
     "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
