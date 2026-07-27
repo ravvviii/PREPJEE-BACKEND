@@ -11,6 +11,7 @@ const TEST_ADMIN_EMAIL = 'p16-test-admin@test.local';
 const TEST_USER_PHONE = '+911234599016';
 const ACTIVE_PLAN_NAME = '__P16Test Active Plan__';
 const INACTIVE_PLAN_NAME = '__P16Test Inactive Plan__';
+const OTHER_BUCKET_PLAN_NAME = '__P16Test Other Bucket Plan__';
 const NEW_PLAN_NAME = '__P16Test New Plan__';
 
 const computePaymentSignature = (orderId, paymentId) =>
@@ -26,6 +27,7 @@ let userId;
 let userToken;
 let activePlanId;
 let inactivePlanId;
+let otherBucketPlanId;
 
 before(async () => {
   app = buildApp();
@@ -39,7 +41,9 @@ before(async () => {
   adminToken = signAdminAccessToken(adminId, 'admin');
 
   userId = (
-    await pool.query('INSERT INTO users (phone) VALUES ($1) RETURNING id', [TEST_USER_PHONE])
+    await pool.query('INSERT INTO users (phone, bucket_id) VALUES ($1, 25) RETURNING id', [
+      TEST_USER_PHONE,
+    ])
   ).rows[0].id;
   userToken = signUserAccessToken(userId);
 
@@ -58,13 +62,23 @@ before(async () => {
       [INACTIVE_PLAN_NAME],
     )
   ).rows[0].id;
+
+  otherBucketPlanId = (
+    await pool.query(
+      `INSERT INTO subscription_plans
+       (name, amount, duration_days, is_active, bucket_min, bucket_max)
+     VALUES ($1, 9900, 7, TRUE, 50, 79)
+     RETURNING id`,
+      [OTHER_BUCKET_PLAN_NAME],
+    )
+  ).rows[0].id;
 });
 
 after(async () => {
   await pool.query('DELETE FROM payments WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscription_plans WHERE name = ANY($1)', [
-    [ACTIVE_PLAN_NAME, INACTIVE_PLAN_NAME, NEW_PLAN_NAME],
+    [ACTIVE_PLAN_NAME, INACTIVE_PLAN_NAME, OTHER_BUCKET_PLAN_NAME, NEW_PLAN_NAME],
   ]);
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
   await pool.query('DELETE FROM admins WHERE id = $1', [adminId]);
@@ -79,7 +93,21 @@ test('GET /subscription-plans (public) only shows active plans', async () => {
 
   assert.equal(response.statusCode, 200);
   assert.ok(names.includes(ACTIVE_PLAN_NAME));
+  assert.ok(names.includes(OTHER_BUCKET_PLAN_NAME));
   assert.equal(names.includes(INACTIVE_PLAN_NAME), false);
+});
+
+test("GET /subscription-plans filters plans using the authenticated user's bucket", async () => {
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/v1/subscription-plans?limit=50',
+    headers: { authorization: `Bearer ${userToken}` },
+  });
+  const names = response.json().data.items.map((plan) => plan.name);
+
+  assert.equal(response.statusCode, 200);
+  assert.ok(names.includes(ACTIVE_PLAN_NAME));
+  assert.equal(names.includes(OTHER_BUCKET_PLAN_NAME), false);
 });
 
 test('GET /admin/subscription-plans (admin) shows active and retired plans', async () => {
@@ -98,7 +126,13 @@ test('POST /admin/subscription-plans rejects a request with no admin token', asy
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/admin/subscription-plans',
-    payload: { name: NEW_PLAN_NAME, amount: 19900, durationDays: 7 },
+    payload: {
+      name: NEW_PLAN_NAME,
+      amount: 19900,
+      durationDays: 7,
+      bucketMin: 20,
+      bucketMax: 29,
+    },
   });
   assert.equal(response.statusCode, 401);
 });
@@ -110,12 +144,20 @@ test('POST /admin/subscription-plans creates a plan', async () => {
     method: 'POST',
     url: '/api/v1/admin/subscription-plans',
     headers: { authorization: `Bearer ${adminToken}` },
-    payload: { name: NEW_PLAN_NAME, amount: 19900, durationDays: 7 },
+    payload: {
+      name: NEW_PLAN_NAME,
+      amount: 19900,
+      durationDays: 7,
+      bucketMin: 20,
+      bucketMax: 29,
+    },
   });
   const body = response.json();
 
   assert.equal(response.statusCode, 201);
   assert.equal(body.data.isActive, true);
+  assert.equal(body.data.bucketMin, 20);
+  assert.equal(body.data.bucketMax, 29);
   createdPlanId = body.data.id;
 });
 
@@ -170,6 +212,18 @@ test('POST /payments/order 404s for an inactive (retired) plan', async () => {
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
     payload: { planId: inactivePlanId },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.json().error.code, 'PLAN_NOT_FOUND');
+});
+
+test("POST /payments/order rejects a plan outside the user's bucket", async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/payments/order',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: { planId: otherBucketPlanId },
   });
 
   assert.equal(response.statusCode, 404);

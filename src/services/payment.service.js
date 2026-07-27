@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import * as paymentRepository from '../repositories/payment.repository.js';
 import * as subscriptionRepository from '../repositories/subscription.repository.js';
 import * as subscriptionPlanRepository from '../repositories/subscription-plan.repository.js';
+import * as userRepository from '../repositories/user.repository.js';
 import { AppError } from '../utils/app-error.js';
 import { trackEvent } from '../modules/analytics/index.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
@@ -36,8 +37,16 @@ const timingSafeEqualHex = (expectedHex, actualHex) => {
 };
 
 export const createOrder = async (userId, planId) => {
-  const plan = await subscriptionPlanRepository.findById(planId);
-  if (!plan || !plan.is_active) {
+  const [plan, user] = await Promise.all([
+    subscriptionPlanRepository.findById(planId),
+    userRepository.findById(userId),
+  ]);
+  const eligible =
+    plan &&
+    user &&
+    user.bucket_id >= plan.bucket_min &&
+    user.bucket_id <= plan.bucket_max;
+  if (!plan || !plan.is_active || !eligible) {
     throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND, 'PLAN_NOT_FOUND');
   }
 

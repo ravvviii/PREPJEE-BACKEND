@@ -1,12 +1,16 @@
 import { query } from '../utils/db.js';
 import { withTransaction } from '../utils/transaction.js';
 
-export const findPage = async ({ limit, cursorCreatedAt, cursorId, onlyActive }) => {
+export const findPage = async ({ limit, cursorCreatedAt, cursorId, onlyActive, bucketId }) => {
   const params = [];
   let whereClause = 'WHERE TRUE';
 
   if (onlyActive) {
     whereClause += ' AND is_active = TRUE';
+  }
+  if (Number.isInteger(bucketId)) {
+    params.push(bucketId);
+    whereClause += ` AND $${params.length} BETWEEN bucket_min AND bucket_max`;
   }
   if (cursorCreatedAt && cursorId) {
     params.push(cursorCreatedAt, cursorId);
@@ -39,27 +43,40 @@ export const findDefault = async () => {
   return rows[0] ?? null;
 };
 
-export const create = async ({ name, amount, currency, durationDays }) => {
+export const create = async ({
+  name,
+  amount,
+  currency,
+  durationDays,
+  bucketMin = 0,
+  bucketMax = 99,
+}) => {
   const { rows } = await query(
-    `INSERT INTO subscription_plans (name, amount, currency, duration_days)
-     VALUES ($1, $2, COALESCE($3, 'INR'), $4)
+    `INSERT INTO subscription_plans
+       (name, amount, currency, duration_days, bucket_min, bucket_max)
+     VALUES ($1, $2, COALESCE($3, 'INR'), $4, $5, $6)
      RETURNING *`,
-    [name, amount, currency, durationDays],
+    [name, amount, currency, durationDays, bucketMin, bucketMax],
   );
   return rows[0];
 };
 
-export const update = async (id, { name, amount, currency, durationDays, isActive }) => {
+export const update = async (
+  id,
+  { name, amount, currency, durationDays, isActive, bucketMin, bucketMax },
+) => {
   const { rows } = await query(
     `UPDATE subscription_plans SET
        name = COALESCE($2, name),
        amount = COALESCE($3, amount),
        currency = COALESCE($4, currency),
        duration_days = COALESCE($5, duration_days),
-       is_active = COALESCE($6, is_active)
+       is_active = COALESCE($6, is_active),
+       bucket_min = COALESCE($7, bucket_min),
+       bucket_max = COALESCE($8, bucket_max)
      WHERE id = $1
      RETURNING *`,
-    [id, name, amount, currency, durationDays, isActive],
+    [id, name, amount, currency, durationDays, isActive, bucketMin, bucketMax],
   );
   return rows[0] ?? null;
 };

@@ -7,6 +7,7 @@ export const list = async (request, reply) => {
     limit: limit ? Number(limit) : undefined,
     cursor,
     onlyActive: true,
+    userId: request.user?.id,
   });
   reply.send(success(result));
 };

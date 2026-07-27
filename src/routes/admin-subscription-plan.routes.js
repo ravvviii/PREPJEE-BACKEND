@@ -17,6 +17,8 @@ const planFieldsSchema = {
   amount: { type: 'integer', minimum: 100 },
   currency: { type: 'string', minLength: 3, maxLength: 3 },
   durationDays: { type: 'integer', minimum: 1 },
+  bucketMin: { type: 'integer', minimum: 0, maximum: 99 },
+  bucketMax: { type: 'integer', minimum: 0, maximum: 99 },
 };
 
 export default async function adminSubscriptionPlanRoutes(fastify) {
