@@ -1,4 +1,4 @@
-import { getMe, updateProfile } from '../controllers/user.controller.js';
+import { getMe, updateProfile, uploadAvatar } from '../controllers/user.controller.js';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 
 export default async function userRoutes(fastify) {
@@ -35,5 +35,18 @@ export default async function userRoutes(fastify) {
       },
     },
     updateProfile,
+  );
+
+  fastify.post(
+    '/users/avatar',
+    {
+      preHandler: requireAuth,
+      schema: {
+        description: 'Upload and set the logged-in user avatar (jpeg/png/webp, max 10MB)',
+        tags: ['users'],
+        consumes: ['multipart/form-data'],
+      },
+    },
+    uploadAvatar,
   );
 }
