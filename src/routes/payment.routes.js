@@ -1,7 +1,72 @@
 import { createOrder, verify, webhook, history } from '../controllers/payment.controller.js';
+import {
+  create as createRecurring,
+  verify as verifyRecurring,
+  cancel as cancelRecurring,
+} from '../controllers/recurring-payment.controller.js';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 
 export default async function paymentRoutes(fastify) {
+  fastify.post(
+    '/payments/subscription',
+    {
+      preHandler: requireAuth,
+      schema: {
+        description: 'Create a Razorpay recurring subscription with optional trial',
+        tags: ['payments'],
+        body: {
+          type: 'object',
+          required: ['planId', 'idempotencyKey'],
+          properties: {
+            planId: { type: 'string', format: 'uuid' },
+            idempotencyKey: { type: 'string', minLength: 16, maxLength: 100 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    createRecurring,
+  );
+
+  fastify.post(
+    '/payments/subscription/verify',
+    {
+      preHandler: requireAuth,
+      schema: {
+        description: 'Verify recurring mandate authorisation',
+        tags: ['payments'],
+        body: {
+          type: 'object',
+          required: ['razorpayPaymentId', 'razorpaySubscriptionId', 'razorpaySignature'],
+          properties: {
+            razorpayPaymentId: { type: 'string' },
+            razorpaySubscriptionId: { type: 'string' },
+            razorpaySignature: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    verifyRecurring,
+  );
+
+  fastify.post(
+    '/payments/subscription/cancel',
+    {
+      preHandler: requireAuth,
+      schema: {
+        description: 'Cancel recurring billing, at cycle end by default',
+        tags: ['payments'],
+        body: {
+          type: 'object',
+          properties: { cancelAtCycleEnd: { type: 'boolean' } },
+          additionalProperties: false,
+        },
+      },
+    },
+    cancelRecurring,
+  );
+
   fastify.post(
     '/payments/order',
     {

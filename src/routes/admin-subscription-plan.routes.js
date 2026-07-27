@@ -19,6 +19,13 @@ const planFieldsSchema = {
   durationDays: { type: 'integer', minimum: 1 },
   bucketMin: { type: 'integer', minimum: 0, maximum: 99 },
   bucketMax: { type: 'integer', minimum: 0, maximum: 99 },
+  recurringEnabled: { type: 'boolean' },
+  billingPeriod: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly'] },
+  billingInterval: { type: 'integer', minimum: 1, maximum: 365 },
+  totalCount: { type: 'integer', minimum: 1, maximum: 1200 },
+  trialAmount: { type: 'integer', minimum: 100 },
+  trialDays: { type: 'integer', minimum: 1, maximum: 365 },
+  providerPlanId: { type: 'string', minLength: 6, maxLength: 100 },
 };
 
 export default async function adminSubscriptionPlanRoutes(fastify) {

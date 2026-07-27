@@ -13,6 +13,7 @@ const ACTIVE_PLAN_NAME = '__P16Test Active Plan__';
 const INACTIVE_PLAN_NAME = '__P16Test Inactive Plan__';
 const OTHER_BUCKET_PLAN_NAME = '__P16Test Other Bucket Plan__';
 const NEW_PLAN_NAME = '__P16Test New Plan__';
+const RECURRING_PLAN_NAME = '__Recurring Plan Test__';
 
 const computePaymentSignature = (orderId, paymentId) =>
   createHmac('sha256', env.razorpay.keySecret).update(`${orderId}|${paymentId}`).digest('hex');
@@ -79,7 +80,7 @@ after(async () => {
   await pool.query('DELETE FROM payments WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscription_plans WHERE name = ANY($1)', [
-    [ACTIVE_PLAN_NAME, INACTIVE_PLAN_NAME, OTHER_BUCKET_PLAN_NAME, NEW_PLAN_NAME],
+    [ACTIVE_PLAN_NAME, INACTIVE_PLAN_NAME, OTHER_BUCKET_PLAN_NAME, NEW_PLAN_NAME, RECURRING_PLAN_NAME],
   ]);
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
   await pool.query('DELETE FROM admins WHERE id = $1', [adminId]);
@@ -172,6 +173,61 @@ test('POST /admin/subscription-plans rejects a duplicate name', async () => {
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, 'PLAN_NAME_TAKEN');
+});
+
+let recurringPlanId;
+
+test('POST /admin/subscription-plans validates and creates a recurring trial plan', async () => {
+  const incomplete = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscription-plans',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: RECURRING_PLAN_NAME,
+      amount: 99900,
+      durationDays: 30,
+      recurringEnabled: true,
+    },
+  });
+  assert.equal(incomplete.statusCode, 400);
+  assert.equal(incomplete.json().error.code, 'INVALID_RECURRING_PLAN');
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscription-plans',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: RECURRING_PLAN_NAME,
+      amount: 99900,
+      durationDays: 30,
+      recurringEnabled: true,
+      billingPeriod: 'monthly',
+      billingInterval: 1,
+      totalCount: 12,
+      trialAmount: 100,
+      trialDays: 1,
+      providerPlanId: 'plan_test_recurring',
+    },
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().data.recurringEnabled, true);
+  assert.equal(response.json().data.trialAmount, 100);
+  recurringPlanId = response.json().data.id;
+});
+
+test('PUT /admin/subscription-plans/:id can disable recurring and clears its configuration', async () => {
+  const response = await app.inject({
+    method: 'PUT',
+    url: `/api/v1/admin/subscription-plans/${recurringPlanId}`,
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: { recurringEnabled: false },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.recurringEnabled, false);
+  assert.equal(response.json().data.providerPlanId, null);
+  assert.equal(response.json().data.trialAmount, null);
 });
 
 test('PUT /admin/subscription-plans/:id can retire a plan', async () => {

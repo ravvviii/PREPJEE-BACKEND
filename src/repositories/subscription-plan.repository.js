@@ -50,20 +50,37 @@ export const create = async ({
   durationDays,
   bucketMin = 0,
   bucketMax = 99,
+  recurringEnabled = false,
+  billingPeriod,
+  billingInterval,
+  totalCount,
+  trialAmount,
+  trialDays,
+  providerPlanId,
 }) => {
   const { rows } = await query(
     `INSERT INTO subscription_plans
-       (name, amount, currency, duration_days, bucket_min, bucket_max)
-     VALUES ($1, $2, COALESCE($3, 'INR'), $4, $5, $6)
+       (name, amount, currency, duration_days, bucket_min, bucket_max,
+        recurring_enabled, billing_period, billing_interval, total_count,
+        trial_amount, trial_days, provider_plan_id)
+     VALUES ($1, $2, COALESCE($3, 'INR'), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
-    [name, amount, currency, durationDays, bucketMin, bucketMax],
+    [
+      name, amount, currency, durationDays, bucketMin, bucketMax,
+      recurringEnabled, billingPeriod, billingInterval, totalCount,
+      trialAmount, trialDays, providerPlanId,
+    ],
   );
   return rows[0];
 };
 
 export const update = async (
   id,
-  { name, amount, currency, durationDays, isActive, bucketMin, bucketMax },
+  {
+    name, amount, currency, durationDays, isActive, bucketMin, bucketMax,
+    recurringEnabled, billingPeriod, billingInterval, totalCount,
+    trialAmount, trialDays, providerPlanId,
+  },
 ) => {
   const { rows } = await query(
     `UPDATE subscription_plans SET
@@ -73,10 +90,21 @@ export const update = async (
        duration_days = COALESCE($5, duration_days),
        is_active = COALESCE($6, is_active),
        bucket_min = COALESCE($7, bucket_min),
-       bucket_max = COALESCE($8, bucket_max)
+       bucket_max = COALESCE($8, bucket_max),
+       recurring_enabled = COALESCE($9, recurring_enabled),
+       billing_period = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($10, billing_period) END,
+       billing_interval = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($11, billing_interval) END,
+       total_count = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($12, total_count) END,
+       trial_amount = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($13, trial_amount) END,
+       trial_days = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($14, trial_days) END,
+       provider_plan_id = CASE WHEN $9 = FALSE THEN NULL ELSE COALESCE($15, provider_plan_id) END
      WHERE id = $1
      RETURNING *`,
-    [id, name, amount, currency, durationDays, isActive, bucketMin, bucketMax],
+    [
+      id, name, amount, currency, durationDays, isActive, bucketMin, bucketMax,
+      recurringEnabled, billingPeriod, billingInterval, totalCount,
+      trialAmount, trialDays, providerPlanId,
+    ],
   );
   return rows[0] ?? null;
 };
