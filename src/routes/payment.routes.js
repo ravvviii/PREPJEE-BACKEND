@@ -11,8 +11,11 @@ export default async function paymentRoutes(fastify) {
         tags: ['payments'],
         body: {
           type: 'object',
-          required: ['planId'],
-          properties: { planId: { type: 'string', format: 'uuid' } },
+          required: ['planId', 'idempotencyKey'],
+          properties: {
+            planId: { type: 'string', format: 'uuid' },
+            idempotencyKey: { type: 'string', minLength: 16, maxLength: 100 },
+          },
           additionalProperties: false,
         },
       },

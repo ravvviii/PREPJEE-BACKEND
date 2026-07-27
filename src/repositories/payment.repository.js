@@ -1,13 +1,32 @@
 import { query } from '../utils/db.js';
+import { withTransaction } from '../utils/transaction.js';
 
-export const create = async ({ userId, provider, providerOrderId, amount, currency, metadata }) => {
+export const create = async ({
+  userId,
+  provider,
+  providerOrderId,
+  amount,
+  currency,
+  metadata,
+  idempotencyKey,
+}) => {
   const { rows } = await query(
-    `INSERT INTO payments (user_id, provider, provider_order_id, amount, currency, provider_metadata)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO payments
+       (user_id, provider, provider_order_id, amount, currency, provider_metadata, idempotency_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [userId, provider, providerOrderId, amount, currency, metadata ?? null],
+    [userId, provider, providerOrderId, amount, currency, metadata ?? null, idempotencyKey],
   );
   return rows[0];
+};
+
+export const findByIdempotencyKey = async (userId, provider, idempotencyKey) => {
+  const { rows } = await query(
+    `SELECT * FROM payments
+     WHERE user_id = $1 AND provider = $2 AND idempotency_key = $3`,
+    [userId, provider, idempotencyKey],
+  );
+  return rows[0] ?? null;
 };
 
 export const findByProviderOrderId = async (provider, providerOrderId) => {
@@ -25,12 +44,40 @@ export const setProviderPaymentId = async (id, providerPaymentId) => {
   ]);
 };
 
-export const markPaid = async (id, { subscriptionId }) => {
-  await query("UPDATE payments SET status = 'paid', subscription_id = $2 WHERE id = $1", [
-    id,
-    subscriptionId,
-  ]);
-};
+export const completeWithSubscription = async ({
+  paymentId,
+  planId,
+  expiresAt,
+}) =>
+  withTransaction(async (client) => {
+    const { rows: paymentRows } = await client.query(
+      'SELECT * FROM payments WHERE id = $1 FOR UPDATE',
+      [paymentId],
+    );
+    const payment = paymentRows[0];
+    if (!payment || payment.status !== 'created') return null;
+
+    await client.query(
+      "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1 AND status = 'active'",
+      [payment.user_id],
+    );
+    const { rows: subscriptionRows } = await client.query(
+      `INSERT INTO subscriptions (user_id, plan_id, provider, status, expires_at)
+       VALUES ($1, $2, $3, 'active', $4)
+       RETURNING *`,
+      [payment.user_id, planId, payment.provider, expiresAt],
+    );
+    const subscription = subscriptionRows[0];
+
+    await client.query(
+      `UPDATE payments
+       SET status = 'paid', subscription_id = $2
+       WHERE id = $1`,
+      [payment.id, subscription.id],
+    );
+
+    return { payment, subscription };
+  });
 
 // Only from 'created' — a payment that's already 'paid' should never be
 // flipped to 'failed' by a stray/out-of-order webhook.

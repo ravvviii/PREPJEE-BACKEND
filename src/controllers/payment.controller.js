@@ -3,7 +3,11 @@ import { success } from '../utils/response.js';
 import { HTTP_STATUS } from '../constants/index.js';
 
 export const createOrder = async (request, reply) => {
-  const result = await paymentService.createOrder(request.user.id, request.body.planId);
+  const result = await paymentService.createOrder(
+    request.user.id,
+    request.body.planId,
+    request.body.idempotencyKey,
+  );
   reply.status(HTTP_STATUS.CREATED).send(success(result));
 };
 

@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { buildApp } from '../src/app.js';
 import { pool, closeDatabase } from '../src/config/database.js';
 import { closeRedis } from '../src/config/redis.js';
@@ -19,6 +19,7 @@ const computePaymentSignature = (orderId, paymentId) =>
 
 const computeWebhookSignature = (rawBody) =>
   createHmac('sha256', env.razorpay.webhookSecret).update(rawBody).digest('hex');
+const orderPayload = (planId, idempotencyKey = randomUUID()) => ({ planId, idempotencyKey });
 
 let app;
 let adminId;
@@ -189,7 +190,7 @@ test('POST /payments/order rejects a request with no token', async () => {
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/payments/order',
-    payload: { planId: activePlanId },
+    payload: orderPayload(activePlanId),
   });
   assert.equal(response.statusCode, 401);
 });
@@ -199,7 +200,7 @@ test('POST /payments/order 404s for a plan that does not exist', async () => {
     method: 'POST',
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
-    payload: { planId: '00000000-0000-0000-0000-000000000000' },
+    payload: orderPayload('00000000-0000-0000-0000-000000000000'),
   });
 
   assert.equal(response.statusCode, 404);
@@ -211,7 +212,7 @@ test('POST /payments/order 404s for an inactive (retired) plan', async () => {
     method: 'POST',
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
-    payload: { planId: inactivePlanId },
+    payload: orderPayload(inactivePlanId),
   });
 
   assert.equal(response.statusCode, 404);
@@ -223,7 +224,7 @@ test("POST /payments/order rejects a plan outside the user's bucket", async () =
     method: 'POST',
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
-    payload: { planId: otherBucketPlanId },
+    payload: orderPayload(otherBucketPlanId),
   });
 
   assert.equal(response.statusCode, 404);
@@ -231,13 +232,15 @@ test("POST /payments/order rejects a plan outside the user's bucket", async () =
 });
 
 let firstOrderId;
+let firstIdempotencyKey;
 
 test('POST /payments/order creates a real Razorpay order for an active plan', async () => {
+  firstIdempotencyKey = randomUUID();
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
-    payload: { planId: activePlanId },
+    payload: orderPayload(activePlanId, firstIdempotencyKey),
   });
   const body = response.json();
 
@@ -251,6 +254,24 @@ test('POST /payments/order creates a real Razorpay order for an active plan', as
     firstOrderId,
   ]);
   assert.equal(row.rows[0].status, 'created');
+});
+
+test('POST /payments/order reuses the order for the same idempotency key', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/payments/order',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: orderPayload(activePlanId, firstIdempotencyKey),
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().data.orderId, firstOrderId);
+
+  const count = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM payments WHERE user_id = $1 AND idempotency_key = $2',
+    [userId, firstIdempotencyKey],
+  );
+  assert.equal(count.rows[0].count, 1);
 });
 
 test('POST /payments/verify rejects an incorrect signature', async () => {
@@ -349,7 +370,7 @@ test('POST /payments/webhook rejects an incorrect signature', async () => {
     method: 'POST',
     url: '/api/v1/payments/order',
     headers: { authorization: `Bearer ${userToken}` },
-    payload: { planId: activePlanId },
+    payload: orderPayload(activePlanId),
   });
   secondOrderId = orderResponse.json().data.orderId;
 

@@ -2,7 +2,6 @@ import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { razorpayClient } from '../config/razorpay.js';
 import { env } from '../config/env.js';
 import * as paymentRepository from '../repositories/payment.repository.js';
-import * as subscriptionRepository from '../repositories/subscription.repository.js';
 import * as subscriptionPlanRepository from '../repositories/subscription-plan.repository.js';
 import * as userRepository from '../repositories/user.repository.js';
 import { AppError } from '../utils/app-error.js';
@@ -36,7 +35,15 @@ const timingSafeEqualHex = (expectedHex, actualHex) => {
   return timingSafeEqual(expectedBuffer, actualBuffer);
 };
 
-export const createOrder = async (userId, planId) => {
+const serializeOrder = (payment) => ({
+  paymentId: payment.id,
+  orderId: payment.provider_order_id,
+  amount: payment.amount,
+  currency: payment.currency,
+  keyId: env.razorpay.keyId,
+});
+
+export const createOrder = async (userId, planId, idempotencyKey) => {
   const [plan, user] = await Promise.all([
     subscriptionPlanRepository.findById(planId),
     userRepository.findById(userId),
@@ -50,6 +57,29 @@ export const createOrder = async (userId, planId) => {
     throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND, 'PLAN_NOT_FOUND');
   }
 
+  const existing = await paymentRepository.findByIdempotencyKey(
+    userId,
+    PAYMENT_PROVIDERS.RAZORPAY,
+    idempotencyKey,
+  );
+  if (existing) {
+    if (existing.provider_metadata?.planId !== planId) {
+      throw new AppError(
+        'This idempotency key was already used for another plan',
+        HTTP_STATUS.CONFLICT,
+        'IDEMPOTENCY_KEY_REUSED',
+      );
+    }
+    if (existing.status !== 'created') {
+      throw new AppError(
+        'This checkout has already completed',
+        HTTP_STATUS.CONFLICT,
+        'CHECKOUT_ALREADY_COMPLETED',
+      );
+    }
+    return serializeOrder(existing);
+  }
+
   const order = await razorpayClient.orders.create({
     amount: plan.amount,
     currency: plan.currency,
@@ -58,27 +88,35 @@ export const createOrder = async (userId, planId) => {
     receipt: randomUUID(),
   });
 
-  const payment = await paymentRepository.create({
-    userId,
-    provider: PAYMENT_PROVIDERS.RAZORPAY,
-    providerOrderId: order.id,
-    amount: plan.amount,
-    currency: plan.currency,
-    metadata: { planId: plan.id },
-  });
+  let payment;
+  try {
+    payment = await paymentRepository.create({
+      userId,
+      provider: PAYMENT_PROVIDERS.RAZORPAY,
+      providerOrderId: order.id,
+      amount: plan.amount,
+      currency: plan.currency,
+      metadata: { planId: plan.id },
+      idempotencyKey,
+    });
+  } catch (error) {
+    // Two tabs can race after both miss the first lookup. The unique index is
+    // the final authority: return the winning row instead of writing twice.
+    if (error.code !== '23505') throw error;
+    payment = await paymentRepository.findByIdempotencyKey(
+      userId,
+      PAYMENT_PROVIDERS.RAZORPAY,
+      idempotencyKey,
+    );
+    if (!payment) throw error;
+  }
 
   await trackEvent(AMPLITUDE_EVENTS.STARTED_SUBSCRIPTION, userId, {
     plan_id: plan.id,
     amount: plan.amount,
   });
 
-  return {
-    paymentId: payment.id,
-    orderId: order.id,
-    amount: plan.amount,
-    currency: plan.currency,
-    keyId: env.razorpay.keyId,
-  };
+  return serializeOrder(payment);
 };
 
 // Shared by both the verify endpoint and the webhook — whichever arrives
@@ -98,15 +136,12 @@ const completePayment = async (payment) => {
     );
   }
 
-  await subscriptionRepository.expireActiveForUser(payment.user_id);
-  const subscription = await subscriptionRepository.create({
-    userId: payment.user_id,
+  const completion = await paymentRepository.completeWithSubscription({
+    paymentId: payment.id,
     planId: plan.id,
-    provider: payment.provider,
     expiresAt: new Date(Date.now() + plan.duration_days * MS_PER_DAY),
   });
-
-  await paymentRepository.markPaid(payment.id, { subscriptionId: subscription.id });
+  if (!completion) return;
 
   await trackEvent(AMPLITUDE_EVENTS.SUCCEEDED_PAYMENT, payment.user_id, {
     payment_id: payment.id,
