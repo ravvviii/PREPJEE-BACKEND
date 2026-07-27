@@ -9,7 +9,10 @@ import { RATE_LIMIT } from '../constants/index.js';
 async function securityPlugins(fastify) {
   await fastify.register(cors, { origin: env.cors.origin });
   await fastify.register(helmet);
-  await fastify.register(compress);
+  // The global response hook currently emits zero-length bodies on the local
+  // Node runtime for compressed browser responses. Keep request decompression
+  // available, but leave response compression to the deployment proxy/CDN.
+  await fastify.register(compress, { globalCompression: false });
 
   // Baseline, applies to every route unless overridden per-route via
   // `config: { rateLimit: {...} }` (see admin-auth.routes.js for the
