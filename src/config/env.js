@@ -28,6 +28,10 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 const isProd = nodeEnv === 'production';
+const internalApiKey = readOptional('INTERNAL_API_KEY');
+if (internalApiKey && internalApiKey.length < 32) {
+  throw new Error('INTERNAL_API_KEY must be at least 32 characters when configured');
+}
 
 // Comma-separated so more than one frontend origin can be trusted at once —
 // e.g. the real production frontend AND a developer's local dev server
@@ -61,6 +65,10 @@ export const env = {
   amplitude: {
     apiKey: readOptional('AMPLITUDE_API_KEY'),
     appVersion: readOptional('APP_VERSION', '1.0.0'),
+  },
+
+  internal: {
+    apiKey: internalApiKey,
   },
 
   database: {
