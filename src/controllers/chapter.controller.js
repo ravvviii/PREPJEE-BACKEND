@@ -10,6 +10,7 @@ export const list = async (request, reply) => {
     subjectId,
     classId,
     search,
+    userId: request.user?.id,
   });
   reply.send(success(result));
 };

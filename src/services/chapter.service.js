@@ -15,13 +15,24 @@ const serializeChapter = (chapter) => ({
   name: chapter.name,
   createdAt: chapter.created_at,
   updatedAt: chapter.updated_at,
+  questionCount: chapter.question_count ?? 0,
+  attemptedQuestionCount: chapter.attempted_question_count ?? 0,
+  progressPercent:
+    chapter.question_count > 0
+      ? Math.round((chapter.attempted_question_count / chapter.question_count) * 100)
+      : 0,
+  difficultyCounts: {
+    easy: chapter.easy_count ?? 0,
+    medium: chapter.medium_count ?? 0,
+    hard: chapter.hard_count ?? 0,
+  },
 });
 
-export const listChapters = async ({ limit, cursor, subjectId, classId, search }) => {
+export const listChapters = async ({ limit, cursor, subjectId, classId, search, userId }) => {
   const pageSize = Math.min(limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
   const cacheKey = [pageSize, cursor ?? '', subjectId ?? '', classId ?? '', search ?? ''].join(':');
 
-  return cached(CACHE_NAMESPACE, cacheKey, CACHE.REFERENCE_LIST_TTL_SECONDS, async () => {
+  const loadPage = async () => {
     const decoded = decodeCursor(cursor);
     const rows = await chapterRepository.findPage({
       limit: pageSize,
@@ -30,11 +41,17 @@ export const listChapters = async ({ limit, cursor, subjectId, classId, search }
       subjectId,
       classId,
       search,
+      userId,
     });
 
     const { items, nextCursor } = paginate(rows, pageSize);
     return { items: items.map(serializeChapter), nextCursor };
-  });
+  };
+
+  // Per-user attempt progress changes frequently and must not enter the shared
+  // reference-data cache. Public chapter metadata remains cacheable.
+  if (userId) return loadPage();
+  return cached(CACHE_NAMESPACE, cacheKey, CACHE.REFERENCE_LIST_TTL_SECONDS, loadPage);
 };
 
 const assertSubjectAndClassExist = async (subjectId, classId) => {

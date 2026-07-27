@@ -1,10 +1,12 @@
 import { list } from '../controllers/chapter.controller.js';
+import { optionalAuth } from '../middlewares/auth.middleware.js';
 
 // Public — same reasoning as subjects/classes.
 export default async function chapterRoutes(fastify) {
   fastify.get(
     '/chapters',
     {
+      preHandler: optionalAuth,
       schema: {
         description:
           'List/search chapters (cursor-paginated; filter by subjectId/classId, or search by name)',

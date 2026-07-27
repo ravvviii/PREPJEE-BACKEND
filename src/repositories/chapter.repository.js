@@ -7,32 +7,46 @@ export const findPage = async ({
   subjectId,
   classId,
   search,
+  userId,
 }) => {
   const params = [];
-  let whereClause = 'WHERE deleted_at IS NULL';
+  let whereClause = 'WHERE c.deleted_at IS NULL';
 
   if (subjectId) {
     params.push(subjectId);
-    whereClause += ` AND subject_id = $${params.length}`;
+    whereClause += ` AND c.subject_id = $${params.length}`;
   }
   if (classId) {
     params.push(classId);
-    whereClause += ` AND class_id = $${params.length}`;
+    whereClause += ` AND c.class_id = $${params.length}`;
   }
   if (search) {
     params.push(`%${search}%`);
-    whereClause += ` AND name ILIKE $${params.length}`;
+    whereClause += ` AND c.name ILIKE $${params.length}`;
   }
   if (cursorCreatedAt && cursorId) {
     params.push(cursorCreatedAt, cursorId);
-    whereClause += ` AND (created_at, id) > ($${params.length - 1}, $${params.length})`;
+    whereClause += ` AND (c.created_at, c.id) > ($${params.length - 1}, $${params.length})`;
   }
 
+  params.push(userId ?? null);
+  const userIdParam = params.length;
   params.push(limit + 1);
   const { rows } = await query(
-    `SELECT id, subject_id, class_id, name, created_at, updated_at FROM chapters
+    `SELECT c.id, c.subject_id, c.class_id, c.name, c.created_at, c.updated_at,
+       COUNT(DISTINCT q.id)::int AS question_count,
+       COUNT(DISTINCT a.question_id)::int AS attempted_question_count,
+       COUNT(DISTINCT q.id) FILTER (WHERE q.difficulty = 'easy')::int AS easy_count,
+       COUNT(DISTINCT q.id) FILTER (WHERE q.difficulty = 'medium')::int AS medium_count,
+       COUNT(DISTINCT q.id) FILTER (WHERE q.difficulty = 'hard')::int AS hard_count
+     FROM chapters c
+     LEFT JOIN questions q
+       ON q.chapter_id = c.id AND q.is_published = TRUE AND q.deleted_at IS NULL
+     LEFT JOIN attempts a
+       ON a.question_id = q.id AND a.user_id = $${userIdParam}
      ${whereClause}
-     ORDER BY created_at ASC, id ASC
+     GROUP BY c.id
+     ORDER BY c.created_at ASC, c.id ASC
      LIMIT $${params.length}`,
     params,
   );
