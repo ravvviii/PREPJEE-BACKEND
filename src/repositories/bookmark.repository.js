@@ -33,9 +33,11 @@ export const findPage = async ({ userId, limit, cursorCreatedAt, cursorId }) => 
 
   params.push(limit + 1);
   const { rows } = await query(
-    `SELECT b.id, b.created_at, q.id AS question_id, q.question_text, q.difficulty
+    `SELECT b.id, b.created_at, q.id AS question_id, q.question_text, q.difficulty,
+       q.chapter_id, c.name AS chapter_name
      FROM bookmarks b
      JOIN questions q ON q.id = b.question_id
+     JOIN chapters c ON c.id = q.chapter_id
      ${whereClause}
      ORDER BY b.created_at ASC, b.id ASC
      LIMIT $${params.length}`,

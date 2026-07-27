@@ -9,6 +9,8 @@ const serializeBookmark = (row) => ({
   questionId: row.question_id,
   questionText: row.question_text,
   difficulty: row.difficulty,
+  chapterId: row.chapter_id,
+  chapterName: row.chapter_name,
   bookmarkedAt: row.created_at,
 });
 

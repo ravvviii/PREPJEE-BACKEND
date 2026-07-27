@@ -89,3 +89,50 @@ export const getStudyHistory = async (userId, limit) => {
   );
   return rows;
 };
+
+export const getDailyActivity = async (userId, days = 90) => {
+  const { rows } = await query(
+    `SELECT DATE(created_at AT TIME ZONE 'UTC') AS activity_date,
+       COUNT(*)::int AS attempt_count,
+       COUNT(*) FILTER (WHERE is_correct)::int AS correct_count
+     FROM attempts
+     WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+     GROUP BY DATE(created_at AT TIME ZONE 'UTC')
+     ORDER BY activity_date ASC`,
+    [userId, days],
+  );
+  return rows;
+};
+
+export const getWeakChapters = async (userId, limit = 5) => {
+  const { rows } = await query(
+    `SELECT c.id, c.name,
+       COUNT(*)::int AS total_attempts,
+       COUNT(*) FILTER (WHERE a.is_correct)::int AS correct_attempts,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE a.is_correct) / COUNT(*))::int AS accuracy_percent
+     FROM attempts a
+     JOIN questions q ON q.id = a.question_id
+     JOIN chapters c ON c.id = q.chapter_id
+     WHERE a.user_id = $1 AND c.deleted_at IS NULL
+     GROUP BY c.id, c.name
+     ORDER BY accuracy_percent ASC, total_attempts DESC
+     LIMIT $2`,
+    [userId, limit],
+  );
+  return rows;
+};
+
+export const getDifficultyPerformance = async (userId) => {
+  const { rows } = await query(
+    `SELECT q.difficulty,
+       COUNT(*)::int AS total_attempts,
+       COUNT(*) FILTER (WHERE a.is_correct)::int AS correct_attempts
+     FROM attempts a
+     JOIN questions q ON q.id = a.question_id
+     WHERE a.user_id = $1
+     GROUP BY q.difficulty
+     ORDER BY q.difficulty ASC`,
+    [userId],
+  );
+  return rows;
+};
