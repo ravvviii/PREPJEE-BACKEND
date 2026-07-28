@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
-import { closeDatabase } from './config/database.js';
-import { closeRedis } from './config/redis.js';
+import { checkDatabaseConnection, closeDatabase } from './config/database.js';
+import { checkRedisConnection, closeRedis } from './config/redis.js';
 
 const start = async () => {
   const app = buildApp();
@@ -23,6 +23,23 @@ const start = async () => {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   try {
+    const [databaseConnected, redisConnected] = await Promise.all([
+      checkDatabaseConnection(),
+      checkRedisConnection(),
+    ]);
+
+    if (databaseConnected) {
+      app.log.info('[Postgres] Connected successfully✅');
+    } else {
+      app.log.warn('[Postgres] Unavailable at startup❌');
+    }
+
+    if (redisConnected) {
+      app.log.info('[Redis] Connected successfully✅');
+    } else {
+      app.log.warn('[Redis] Unavailable at startup❌');
+    }
+
     await app.listen({ port: env.port, host: '0.0.0.0' });
   } catch (error) {
     app.log.error(error);
