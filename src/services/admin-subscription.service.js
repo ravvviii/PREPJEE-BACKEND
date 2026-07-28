@@ -6,6 +6,17 @@ import { HTTP_STATUS, PAYMENT_PROVIDERS } from '../constants/index.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+const findUser = (identifier) => {
+  // Keep the existing admin API compatible: it still passes a phone string.
+  if (typeof identifier === 'string') {
+    return userRepository.findByPhone(identifier);
+  }
+  if (identifier?.phone) {
+    return userRepository.findByPhone(identifier.phone);
+  }
+  return userRepository.findByEmail(identifier?.email);
+};
+
 // planName is optional — falls back to whichever plan is marked as default.
 // Deliberately does NOT require the plan to be `isActive` — an admin
 // granting/comping access for support reasons is exactly the case where a
@@ -30,8 +41,8 @@ const resolvePlan = async (planName) => {
   return defaultPlan;
 };
 
-export const grantSubscription = async (phone, planName) => {
-  const user = await userRepository.findByPhone(phone);
+export const grantSubscription = async (identifier, planName) => {
+  const user = await findUser(identifier);
   if (!user) {
     throw new AppError('User not found', HTTP_STATUS.NOT_FOUND, 'USER_NOT_FOUND');
   }
@@ -53,8 +64,8 @@ export const grantSubscription = async (phone, planName) => {
   };
 };
 
-export const revokeSubscription = async (phone) => {
-  const user = await userRepository.findByPhone(phone);
+export const revokeSubscription = async (identifier) => {
+  const user = await findUser(identifier);
   if (!user) {
     throw new AppError('User not found', HTTP_STATUS.NOT_FOUND, 'USER_NOT_FOUND');
   }

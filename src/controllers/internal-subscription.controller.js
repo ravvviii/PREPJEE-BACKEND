@@ -5,13 +5,16 @@ const DEFAULT_INTERNAL_PLAN = 'monthly_999';
 
 export const create = async (request, reply) => {
   const result = await adminSubscriptionService.grantSubscription(
-    request.body.phone,
+    { phone: request.body.phone, email: request.body.email },
     request.body.planName || DEFAULT_INTERNAL_PLAN,
   );
   reply.send(success(result));
 };
 
 export const remove = async (request, reply) => {
-  await adminSubscriptionService.revokeSubscription(request.body.phone);
+  await adminSubscriptionService.revokeSubscription({
+    phone: request.body.phone,
+    email: request.body.email,
+  });
   reply.send(success(null));
 };

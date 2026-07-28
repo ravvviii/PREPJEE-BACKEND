@@ -3,9 +3,10 @@ import { requireInternalApiKey } from '../middlewares/internal-api-key.middlewar
 
 const requestBodySchema = {
   type: 'object',
-  required: ['phone'],
+  oneOf: [{ required: ['phone'] }, { required: ['email'] }],
   properties: {
     phone: { type: 'string', minLength: 8, maxLength: 20 },
+    email: { type: 'string', format: 'email', maxLength: 254 },
     planName: { type: 'string', minLength: 1, maxLength: 200 },
   },
   additionalProperties: false,
@@ -18,7 +19,7 @@ export default async function internalSubscriptionRoutes(fastify) {
       preHandler: requireInternalApiKey,
       schema: {
         description:
-          'Grant a subscription by phone for trusted internal automation. Defaults to monthly_999.',
+          'Grant a subscription by phone or email for trusted internal automation. Defaults to monthly_999.',
         tags: ['internal-subscriptions'],
         body: requestBodySchema,
       },
@@ -31,13 +32,14 @@ export default async function internalSubscriptionRoutes(fastify) {
     {
       preHandler: requireInternalApiKey,
       schema: {
-        description: 'Revoke the active subscription for a phone number',
+        description: 'Revoke the active subscription for a phone number or email address',
         tags: ['internal-subscriptions'],
         body: {
           type: 'object',
-          required: ['phone'],
+          oneOf: [{ required: ['phone'] }, { required: ['email'] }],
           properties: {
             phone: { type: 'string', minLength: 8, maxLength: 20 },
+            email: { type: 'string', format: 'email', maxLength: 254 },
           },
           additionalProperties: false,
         },

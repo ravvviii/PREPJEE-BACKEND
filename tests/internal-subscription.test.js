@@ -7,6 +7,7 @@ import { env } from '../src/config/env.js';
 
 const INTERNAL_KEY = 'test-internal-api-key-at-least-32-chars';
 const TEST_USER_PHONE = '+911234599088';
+const TEST_USER_EMAIL = 'internal-subscription@example.com';
 const DEFAULT_PLAN_NAME = 'monthly_999';
 const CUSTOM_PLAN_NAME = '__Internal Subscription Custom__';
 
@@ -21,7 +22,10 @@ before(async () => {
   app = buildApp();
 
   userId = (
-    await pool.query('INSERT INTO users (phone) VALUES ($1) RETURNING id', [TEST_USER_PHONE])
+    await pool.query('INSERT INTO users (phone, email) VALUES ($1, $2) RETURNING id', [
+      TEST_USER_PHONE,
+      TEST_USER_EMAIL,
+    ])
   ).rows[0].id;
 
   const existingDefault = await pool.query(
@@ -97,12 +101,42 @@ test('POST /internal/subscriptions accepts an explicit plan name', async () => {
   assert.equal(response.json().data.planName, CUSTOM_PLAN_NAME);
 });
 
-test('DELETE /internal/subscriptions revokes active access', async () => {
+test('POST /internal/subscriptions accepts an email instead of a phone', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/internal/subscriptions',
+    headers: { 'x-internal-api-key': INTERNAL_KEY },
+    payload: { email: TEST_USER_EMAIL },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.planName, DEFAULT_PLAN_NAME);
+});
+
+test('POST /internal/subscriptions requires exactly one user identifier', async () => {
+  const missing = await app.inject({
+    method: 'POST',
+    url: '/api/v1/internal/subscriptions',
+    headers: { 'x-internal-api-key': INTERNAL_KEY },
+    payload: {},
+  });
+  const both = await app.inject({
+    method: 'POST',
+    url: '/api/v1/internal/subscriptions',
+    headers: { 'x-internal-api-key': INTERNAL_KEY },
+    payload: { phone: TEST_USER_PHONE, email: TEST_USER_EMAIL },
+  });
+
+  assert.equal(missing.statusCode, 400);
+  assert.equal(both.statusCode, 400);
+});
+
+test('DELETE /internal/subscriptions revokes active access by email', async () => {
   const response = await app.inject({
     method: 'DELETE',
     url: '/api/v1/internal/subscriptions',
     headers: { 'x-internal-api-key': INTERNAL_KEY },
-    payload: { phone: TEST_USER_PHONE },
+    payload: { email: TEST_USER_EMAIL },
   });
 
   assert.equal(response.statusCode, 200);
