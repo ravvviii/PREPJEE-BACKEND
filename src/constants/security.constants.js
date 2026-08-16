@@ -1,5 +1,7 @@
 export const SECURITY = {
   BCRYPT_SALT_ROUNDS: 12,
+  PASSWORD_RESET_TOKEN_BYTES: 32,
+  PASSWORD_RESET_EXPIRY_MINUTES: 30,
 };
 
 export const RATE_LIMIT = {
@@ -12,4 +14,6 @@ export const RATE_LIMIT = {
   // account are still caught even from different addresses.
   ADMIN_LOGIN_MAX: 5,
   ADMIN_LOGIN_WINDOW_MS: 15 * 60_000,
+  PASSWORD_RESET_MAX: 5,
+  PASSWORD_RESET_WINDOW_MS: 15 * 60_000,
 };

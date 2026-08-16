@@ -11,3 +11,14 @@ export const login = async (request, reply) => {
     }),
   );
 };
+
+export const forgotPassword = async (request, reply) => {
+  const result = await authService.requestAdminPasswordReset(request.body.email);
+  reply.send(success(result));
+};
+
+export const resetPassword = async (request, reply) => {
+  const { token, password } = request.body;
+  await authService.resetAdminPassword(token, password);
+  reply.send(success({ message: 'Password reset successfully.' }));
+};
