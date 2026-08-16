@@ -7,3 +7,10 @@ export const findById = async (id) => {
   const { rows } = await query('SELECT * FROM exams WHERE id = $1', [id]);
   return rows[0] ?? null;
 };
+
+// Small, static reference set (JEE Main / JEE Advanced) — a plain list is
+// enough, no pagination needed.
+export const list = async () => {
+  const { rows } = await query('SELECT * FROM exams ORDER BY name ASC');
+  return rows;
+};

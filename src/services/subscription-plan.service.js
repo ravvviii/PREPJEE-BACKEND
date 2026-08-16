@@ -1,6 +1,7 @@
 import * as subscriptionPlanRepository from '../repositories/subscription-plan.repository.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as recurringSubscriptionRepository from '../repositories/recurring-subscription.repository.js';
+import { razorpayClient } from '../config/razorpay.js';
 import { AppError } from '../utils/app-error.js';
 import { decodeCursor, paginate } from '../utils/pagination.js';
 import { HTTP_STATUS, PAGINATION } from '../constants/index.js';
@@ -134,4 +135,22 @@ export const updatePlan = async (id, fields) => {
   }
 
   return serializePlan(finalPlan);
+};
+
+export const createProviderPlan = async ({ name, amount, currency, billingPeriod, billingInterval }) => {
+  let providerPlan;
+  try {
+    providerPlan = await razorpayClient.plans.create({
+      period: billingPeriod,
+      interval: billingInterval,
+      item: { name, amount, currency },
+    });
+  } catch (error) {
+    throw new AppError(
+      error.error?.description || 'Could not create the plan on Razorpay',
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      'PROVIDER_PLAN_CREATE_FAILED',
+    );
+  }
+  return { providerPlanId: providerPlan.id };
 };

@@ -2,6 +2,7 @@ import {
   list,
   create,
   update,
+  createProviderPlan,
 } from '../controllers/admin-subscription-plan.controller.js';
 import { requireAdminAuth } from '../middlewares/admin-auth.middleware.js';
 
@@ -65,6 +66,30 @@ export default async function adminSubscriptionPlanRoutes(fastify) {
       },
     },
     create,
+  );
+
+  fastify.post(
+    '/admin/subscription-plans/razorpay-plan',
+    {
+      preHandler: requireAdminAuth,
+      schema: {
+        description: 'Create a matching recurring plan on Razorpay and return its plan ID',
+        tags: ['admin-subscription-plans'],
+        body: {
+          type: 'object',
+          required: ['name', 'amount', 'currency', 'billingPeriod', 'billingInterval'],
+          properties: {
+            name: planFieldsSchema.name,
+            amount: planFieldsSchema.amount,
+            currency: planFieldsSchema.currency,
+            billingPeriod: planFieldsSchema.billingPeriod,
+            billingInterval: planFieldsSchema.billingInterval,
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    createProviderPlan,
   );
 
   fastify.put(

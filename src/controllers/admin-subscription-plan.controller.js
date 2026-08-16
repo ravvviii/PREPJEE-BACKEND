@@ -21,3 +21,8 @@ export const update = async (request, reply) => {
   const plan = await subscriptionPlanService.updatePlan(request.params.id, request.body);
   reply.send(success(plan));
 };
+
+export const createProviderPlan = async (request, reply) => {
+  const result = await subscriptionPlanService.createProviderPlan(request.body);
+  reply.status(HTTP_STATUS.CREATED).send(success(result));
+};
