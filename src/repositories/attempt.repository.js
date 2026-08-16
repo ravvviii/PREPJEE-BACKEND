@@ -26,12 +26,29 @@ export const existsForUserAndQuestion = async (userId, questionId) => {
 
 // No unique constraint on (user_id, question_id) — retries are allowed, so
 // this is an append-only log, never an upsert.
-export const create = async ({ userId, questionId, selectedOptionId, isCorrect, timeTakenSeconds }) => {
+export const create = async ({
+  userId,
+  questionId,
+  selectedOptionId,
+  selectedOptionIds,
+  numericalAnswer,
+  isCorrect,
+  timeTakenSeconds,
+}) => {
   const { rows } = await query(
-    `INSERT INTO attempts (user_id, question_id, selected_option_id, is_correct, time_taken_seconds)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO attempts
+       (user_id, question_id, selected_option_id, selected_option_ids, numerical_answer, is_correct, time_taken_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [userId, questionId, selectedOptionId ?? null, isCorrect, timeTakenSeconds ?? null],
+    [
+      userId,
+      questionId,
+      selectedOptionId ?? null,
+      selectedOptionIds ?? null,
+      numericalAnswer ?? null,
+      isCorrect,
+      timeTakenSeconds ?? null,
+    ],
   );
   return rows[0];
 };

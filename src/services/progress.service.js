@@ -1,6 +1,7 @@
 import * as progressRepository from '../repositories/progress.repository.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as attemptRepository from '../repositories/attempt.repository.js';
+import * as setAttemptService from './set-attempt.service.js';
 import { PROGRESS } from '../constants/index.js';
 
 export const getProgress = async (userId) => {
@@ -16,6 +17,7 @@ export const getProgress = async (userId) => {
     dailyActivityRows,
     weakChapterRows,
     difficultyRows,
+    mockStats,
   ] = await Promise.all([
     progressRepository.getSolvedQuestionsCount(userId),
     progressRepository.getAttemptedQuestionsCount(userId),
@@ -26,6 +28,7 @@ export const getProgress = async (userId) => {
     progressRepository.getDailyActivity(userId),
     progressRepository.getWeakChapters(userId),
     progressRepository.getDifficultyPerformance(userId),
+    setAttemptService.getMockStats(userId),
   ]);
 
   const progressPercent =
@@ -58,6 +61,8 @@ export const getProgress = async (userId) => {
     attemptedQuestionsCount,
     overallAccuracy,
     dailyStreak,
+    mocksAttempted: mockStats.mocksAttempted,
+    totalMocks: mockStats.totalMocks,
     completedChapters: completedChapters.map((chapter) => ({
       id: chapter.id,
       name: chapter.name,
