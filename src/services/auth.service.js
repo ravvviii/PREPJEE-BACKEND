@@ -1,14 +1,17 @@
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { redis } from '../config/redis.js';
 import { env } from '../config/env.js';
 import * as userRepository from '../repositories/user.repository.js';
 import * as adminRepository from '../repositories/admin.repository.js';
 import * as otpRepository from '../repositories/otp.repository.js';
 import * as refreshTokenRepository from '../repositories/refresh-token.repository.js';
+import * as passwordResetRepository from '../repositories/password-reset.repository.js';
 import { sendOtp as sendOtpViaProvider } from '../modules/otp/otp-provider.js';
+import { sendPasswordReset } from '../modules/password-reset/password-reset-provider.js';
 import { verifyGoogleIdToken } from '../modules/google-auth/google-auth-provider.js';
 import { hashToken } from '../utils/hash.js';
-import { comparePassword } from '../utils/password.js';
+import { comparePassword, hashPassword } from '../utils/password.js';
+import { withTransaction } from '../utils/transaction.js';
 import {
   signUserAccessToken,
   signRefreshToken,
@@ -25,6 +28,7 @@ import {
   HTTP_STATUS,
   JWT_TOKEN_TYPE,
   JWT_PRINCIPAL,
+  SECURITY,
 } from '../constants/index.js';
 
 export const sendOtp = async (phone) => {
@@ -220,4 +224,60 @@ export const adminLogin = async (email, password) => {
 
   const accessToken = signAdminAccessToken(admin.id, admin.role);
   return { admin, accessToken };
+};
+
+export const createSuperAdmin = async ({ name, email, password }) => {
+  try {
+    return await adminRepository.createSuperAdmin({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      passwordHash: await hashPassword(password),
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      throw new AppError('An admin with this email already exists', HTTP_STATUS.CONFLICT, 'ADMIN_EXISTS');
+    }
+    throw error;
+  }
+};
+
+// Deliberately returns the same result whether or not the address exists.
+// This prevents the endpoint from becoming an admin-account directory.
+export const requestAdminPasswordReset = async (email) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const admin = await adminRepository.findByEmail(normalizedEmail);
+
+  if (admin) {
+    const token = randomBytes(SECURITY.PASSWORD_RESET_TOKEN_BYTES).toString('hex');
+    const expiresAt = new Date(
+      Date.now() + SECURITY.PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
+    );
+    await passwordResetRepository.invalidateForAdmin(admin.id);
+    await passwordResetRepository.create({
+      adminId: admin.id,
+      tokenHash: hashToken(token),
+      expiresAt,
+    });
+    await sendPasswordReset(admin.email, token, SECURITY.PASSWORD_RESET_EXPIRY_MINUTES);
+  }
+
+  return { message: 'If an account exists for that email, password reset instructions have been sent.' };
+};
+
+export const resetAdminPassword = async (token, password) => {
+  const passwordHash = await hashPassword(password);
+
+  const changed = await withTransaction(async (client) => {
+    const reset = await passwordResetRepository.consume(client, hashToken(token));
+    if (!reset) return false;
+    return Boolean(await adminRepository.updatePassword(client, reset.admin_id, passwordHash));
+  });
+
+  if (!changed) {
+    throw new AppError(
+      'Invalid or expired password reset token',
+      HTTP_STATUS.BAD_REQUEST,
+      'INVALID_PASSWORD_RESET_TOKEN',
+    );
+  }
 };

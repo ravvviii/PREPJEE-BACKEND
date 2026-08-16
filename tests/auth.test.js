@@ -4,6 +4,7 @@ import { buildApp } from '../src/app.js';
 import { pool, closeDatabase } from '../src/config/database.js';
 import { redis, closeRedis } from '../src/config/redis.js';
 import { getLastSentOtp } from '../src/modules/otp/otp-provider.js';
+import { getLastSentPasswordReset } from '../src/modules/password-reset/password-reset-provider.js';
 import { hashPassword } from '../src/utils/password.js';
 import { signUserAccessToken, signAdminAccessToken } from '../src/utils/jwt.js';
 import { OTP, RATE_LIMIT } from '../src/constants/index.js';
@@ -22,6 +23,8 @@ const ALL_TEST_PHONES = [
 ];
 const TEST_ADMIN_EMAIL = 'phase4-test-admin@test.local';
 const TEST_ADMIN_PASSWORD = 'correct-horse-battery-staple';
+const TEST_SUPER_ADMIN_EMAIL = 'phase4-test-super-admin@test.local';
+const TEST_SUPER_ADMIN_PASSWORD = 'initial-super-admin-password';
 
 let app;
 
@@ -32,7 +35,9 @@ const cleanupTestData = async () => {
   );
   await pool.query('DELETE FROM otp_codes WHERE phone = ANY($1)', [ALL_TEST_PHONES]);
   await pool.query('DELETE FROM users WHERE phone = ANY($1)', [ALL_TEST_PHONES]);
-  await pool.query('DELETE FROM admins WHERE email = $1', [TEST_ADMIN_EMAIL]);
+  await pool.query('DELETE FROM admins WHERE email = ANY($1)', [
+    [TEST_ADMIN_EMAIL, TEST_SUPER_ADMIN_EMAIL],
+  ]);
 
   const redisKeys = ALL_TEST_PHONES.flatMap((phone) => [
     `otp:cooldown:${phone}`,
@@ -312,6 +317,67 @@ test('POST /admin/auth/login succeeds with the right credentials', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(body.data.admin.email, TEST_ADMIN_EMAIL);
   assert.ok(body.data.accessToken);
+});
+
+test('POST /internal/admins/super-admin creates a super admin', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/internal/admins/super-admin',
+    payload: {
+      name: 'Phase 4 Test Super Admin',
+      email: TEST_SUPER_ADMIN_EMAIL,
+      password: TEST_SUPER_ADMIN_PASSWORD,
+    },
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().data.admin.role, 'super_admin');
+  assert.equal(response.json().data.admin.password_hash, undefined);
+});
+
+test('POST /admin/auth/forgot-password does not reveal whether an account exists', async () => {
+  const knownResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/forgot-password',
+    payload: { email: TEST_SUPER_ADMIN_EMAIL },
+  });
+  const unknownResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/forgot-password',
+    payload: { email: 'unknown-reset-user@test.local' },
+  });
+
+  assert.equal(knownResponse.statusCode, 200);
+  assert.equal(unknownResponse.statusCode, 200);
+  assert.deepEqual(knownResponse.json(), unknownResponse.json());
+  assert.equal(getLastSentPasswordReset().email, TEST_SUPER_ADMIN_EMAIL);
+});
+
+test('POST /admin/auth/reset-password changes the password and consumes the token', async () => {
+  const { token } = getLastSentPasswordReset();
+  const newPassword = 'replacement-super-admin-password';
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/reset-password',
+    payload: { token, password: newPassword },
+  });
+
+  assert.equal(response.statusCode, 200);
+
+  const reusedResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/reset-password',
+    payload: { token, password: 'another-password' },
+  });
+  assert.equal(reusedResponse.statusCode, 400);
+  assert.equal(reusedResponse.json().error.code, 'INVALID_PASSWORD_RESET_TOKEN');
+
+  const loginResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/auth/login',
+    payload: { email: TEST_SUPER_ADMIN_EMAIL, password: newPassword },
+  });
+  assert.equal(loginResponse.statusCode, 200);
 });
 
 test('POST /admin/auth/login rate-limits repeated attempts against the same email', async () => {

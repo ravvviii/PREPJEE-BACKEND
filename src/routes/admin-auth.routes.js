@@ -1,4 +1,4 @@
-import { login } from '../controllers/admin-auth.controller.js';
+import { forgotPassword, login, resetPassword } from '../controllers/admin-auth.controller.js';
 import { RATE_LIMIT } from '../constants/index.js';
 
 export default async function adminAuthRoutes(fastify) {
@@ -35,5 +35,50 @@ export default async function adminAuthRoutes(fastify) {
       },
     },
     login,
+  );
+
+  fastify.post(
+    '/admin/auth/forgot-password',
+    {
+      config: {
+        rateLimit: {
+          max: RATE_LIMIT.PASSWORD_RESET_MAX,
+          timeWindow: RATE_LIMIT.PASSWORD_RESET_WINDOW_MS,
+          hook: 'preHandler',
+          keyGenerator: (request) => request.body?.email ?? request.ip,
+        },
+      },
+      schema: {
+        description: 'Request password-reset instructions for an admin or super admin',
+        tags: ['admin-auth'],
+        body: {
+          type: 'object',
+          required: ['email'],
+          properties: { email: { type: 'string', format: 'email', maxLength: 254 } },
+          additionalProperties: false,
+        },
+      },
+    },
+    forgotPassword,
+  );
+
+  fastify.post(
+    '/admin/auth/reset-password',
+    {
+      schema: {
+        description: 'Set a new password using a one-time password-reset token',
+        tags: ['admin-auth'],
+        body: {
+          type: 'object',
+          required: ['token', 'password'],
+          properties: {
+            token: { type: 'string', minLength: 64, maxLength: 64 },
+            password: { type: 'string', minLength: 8, maxLength: 128 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    resetPassword,
   );
 }
