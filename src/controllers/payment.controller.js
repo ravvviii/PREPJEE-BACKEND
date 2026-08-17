@@ -11,6 +11,17 @@ export const createOrder = async (request, reply) => {
   reply.status(HTTP_STATUS.CREATED).send(success(result));
 };
 
+export const createQr = async (request, reply) => {
+  const result = await paymentService.createQrCode(
+    request.user.id,
+    request.body.planId,
+    request.body.idempotencyKey,
+    request.body.description,
+    request.body.type,
+  );
+  reply.status(HTTP_STATUS.CREATED).send(success(result));
+};
+
 export const verify = async (request, reply) => {
   const result = await paymentService.verifyPayment(request.user.id, request.body);
   reply.send(success(result));
