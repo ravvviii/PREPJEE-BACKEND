@@ -5,6 +5,7 @@ import { buildApp } from '../src/app.js';
 import { pool, closeDatabase } from '../src/config/database.js';
 import { closeRedis } from '../src/config/redis.js';
 import { env } from '../src/config/env.js';
+import { razorpayClient } from '../src/config/razorpay.js';
 import { signAdminAccessToken, signUserAccessToken } from '../src/utils/jwt.js';
 
 const TEST_ADMIN_EMAIL = 'p16-test-admin@test.local';
@@ -77,6 +78,7 @@ before(async () => {
 });
 
 after(async () => {
+  razorpayClient.qrCode.create = originalQrCodeCreate;
   await pool.query('DELETE FROM payments WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM subscription_plans WHERE name = ANY($1)', [
@@ -289,6 +291,9 @@ test("POST /payments/order rejects a plan outside the user's bucket", async () =
 
 let firstOrderId;
 let firstIdempotencyKey;
+let firstQrCodeId;
+let firstQrIdempotencyKey;
+const originalQrCodeCreate = razorpayClient.qrCode.create;
 
 test('POST /payments/order creates a real Razorpay order for an active plan', async () => {
   firstIdempotencyKey = randomUUID();
@@ -328,6 +333,94 @@ test('POST /payments/order reuses the order for the same idempotency key', async
     [userId, firstIdempotencyKey],
   );
   assert.equal(count.rows[0].count, 1);
+});
+
+test('POST /payments/qr creates a Razorpay QR code for an active plan', async () => {
+  firstQrIdempotencyKey = randomUUID();
+  firstQrCodeId = `qr_test_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+  razorpayClient.qrCode.create = async (payload) => ({
+    id: firstQrCodeId,
+    image_url: `https://rzp.io/i/${firstQrCodeId}`,
+    short_url: `https://rzp.io/l/${firstQrCodeId}`,
+    payment_amount: payload.payment_amount,
+  });
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/payments/qr',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: {
+      ...orderPayload(activePlanId, firstQrIdempotencyKey),
+      description: 'PREPJEE QR test payment',
+    },
+  });
+  const body = response.json();
+
+  assert.equal(response.statusCode, 201);
+  assert.ok(body.data.qrCodeId.startsWith('qr_'));
+  assert.ok(body.data.imageUrl);
+  assert.equal(body.data.amount, 49900);
+
+  const row = await pool.query(
+    `SELECT status, provider_metadata
+     FROM payments
+     WHERE provider_order_id = $1`,
+    [firstQrCodeId],
+  );
+  assert.equal(row.rows[0].status, 'created');
+  assert.equal(row.rows[0].provider_metadata.checkoutType, 'qr');
+});
+
+test('POST /payments/qr reuses the QR code for the same idempotency key', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/payments/qr',
+    headers: { authorization: `Bearer ${userToken}` },
+    payload: orderPayload(activePlanId, firstQrIdempotencyKey),
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().data.qrCodeId, firstQrCodeId);
+
+  const count = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM payments WHERE user_id = $1 AND idempotency_key = $2',
+    [userId, firstQrIdempotencyKey],
+  );
+  assert.equal(count.rows[0].count, 1);
+});
+
+test('POST /payments/webhook with a valid QR payment completes the payment', async () => {
+  razorpayClient.qrCode.create = originalQrCodeCreate;
+  const rawBody = JSON.stringify({
+    event: 'payment.captured',
+    payload: {
+      payment: {
+        entity: {
+          id: 'pay_fake_qr_webhook_1',
+          qr_code_id: firstQrCodeId,
+        },
+      },
+    },
+  });
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/payments/webhook',
+    headers: {
+      'content-type': 'application/json',
+      'x-razorpay-signature': computeWebhookSignature(rawBody),
+    },
+    payload: rawBody,
+  });
+
+  assert.equal(response.statusCode, 200);
+
+  const paymentRow = await pool.query(
+    'SELECT status, provider_payment_id, subscription_id FROM payments WHERE provider_order_id = $1',
+    [firstQrCodeId],
+  );
+  assert.equal(paymentRow.rows[0].status, 'paid');
+  assert.equal(paymentRow.rows[0].provider_payment_id, 'pay_fake_qr_webhook_1');
+  assert.ok(paymentRow.rows[0].subscription_id);
 });
 
 test('POST /payments/verify rejects an incorrect signature', async () => {

@@ -1,4 +1,10 @@
-import { createOrder, verify, webhook, history } from '../controllers/payment.controller.js';
+import {
+  createOrder,
+  createQr,
+  verify,
+  webhook,
+  history,
+} from '../controllers/payment.controller.js';
 import {
   create as createRecurring,
   verify as verifyRecurring,
@@ -65,6 +71,29 @@ export default async function paymentRoutes(fastify) {
       },
     },
     cancelRecurring,
+  );
+
+  fastify.post(
+    '/payments/qr',
+    {
+      preHandler: requireAuth,
+      schema: {
+        description: 'Create a Razorpay QR code for a subscription plan',
+        tags: ['payments'],
+        body: {
+          type: 'object',
+          required: ['planId', 'idempotencyKey'],
+          properties: {
+            planId: { type: 'string', format: 'uuid' },
+            idempotencyKey: { type: 'string', minLength: 16, maxLength: 100 },
+            description: { type: 'string', maxLength: 255 },
+            type: { type: 'string', enum: ['upi_qr', 'bharat_qr'] },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    createQr,
   );
 
   fastify.post(

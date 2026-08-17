@@ -44,7 +44,16 @@ const serializeOrder = (payment) => ({
   keyId: env.razorpay.keyId,
 });
 
-export const createOrder = async (userId, planId, idempotencyKey) => {
+const serializeQrCode = (payment) => ({
+  paymentId: payment.id,
+  qrCodeId: payment.provider_order_id,
+  imageUrl: payment.provider_metadata?.imageUrl,
+  shortUrl: payment.provider_metadata?.shortUrl,
+  amount: payment.amount,
+  currency: payment.currency,
+});
+
+const validatePlanForCheckout = async (userId, planId) => {
   const [plan, user] = await Promise.all([
     subscriptionPlanRepository.findById(planId),
     userRepository.findById(userId),
@@ -57,6 +66,11 @@ export const createOrder = async (userId, planId, idempotencyKey) => {
   if (!plan || !plan.is_active || !eligible) {
     throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND, 'PLAN_NOT_FOUND');
   }
+  return { plan, user };
+};
+
+export const createOrder = async (userId, planId, idempotencyKey) => {
+  const { plan } = await validatePlanForCheckout(userId, planId);
 
   const existing = await paymentRepository.findByIdempotencyKey(
     userId,
@@ -64,9 +78,12 @@ export const createOrder = async (userId, planId, idempotencyKey) => {
     idempotencyKey,
   );
   if (existing) {
-    if (existing.provider_metadata?.planId !== planId) {
+    if (
+      existing.provider_metadata?.planId !== planId ||
+      existing.provider_metadata?.checkoutType === 'qr'
+    ) {
       throw new AppError(
-        'This idempotency key was already used for another plan',
+        'This idempotency key was already used for another checkout',
         HTTP_STATUS.CONFLICT,
         'IDEMPOTENCY_KEY_REUSED',
       );
@@ -97,7 +114,7 @@ export const createOrder = async (userId, planId, idempotencyKey) => {
       providerOrderId: order.id,
       amount: plan.amount,
       currency: plan.currency,
-      metadata: { planId: plan.id },
+      metadata: { planId: plan.id, checkoutType: 'order' },
       idempotencyKey,
     });
   } catch (error) {
@@ -118,6 +135,91 @@ export const createOrder = async (userId, planId, idempotencyKey) => {
   });
 
   return serializeOrder(payment);
+};
+
+export const createQrCode = async (
+  userId,
+  planId,
+  idempotencyKey,
+  description,
+  type = 'upi_qr',
+) => {
+  const { plan } = await validatePlanForCheckout(userId, planId);
+
+  const existing = await paymentRepository.findByIdempotencyKey(
+    userId,
+    PAYMENT_PROVIDERS.RAZORPAY,
+    idempotencyKey,
+  );
+  if (existing) {
+    if (
+      existing.provider_metadata?.planId !== planId ||
+      existing.provider_metadata?.checkoutType !== 'qr'
+    ) {
+      throw new AppError(
+        'This idempotency key was already used for another checkout',
+        HTTP_STATUS.CONFLICT,
+        'IDEMPOTENCY_KEY_REUSED',
+      );
+    }
+    if (existing.status !== 'created') {
+      throw new AppError(
+        'This checkout has already completed',
+        HTTP_STATUS.CONFLICT,
+        'CHECKOUT_ALREADY_COMPLETED',
+      );
+    }
+    return serializeQrCode(existing);
+  }
+
+  const qrCode = await razorpayClient.qrCode.create({
+    type,
+    usage: 'single_use',
+    fixed_amount: true,
+    payment_amount: plan.amount,
+    name: `PREPJEE ${plan.name}`,
+    description: description || `${plan.name} payment`,
+    notes: {
+      userId,
+      planId: plan.id,
+      planName: plan.name,
+      source: 'prepjee',
+    },
+  });
+
+  let payment;
+  try {
+    payment = await paymentRepository.create({
+      userId,
+      provider: PAYMENT_PROVIDERS.RAZORPAY,
+      providerOrderId: qrCode.id,
+      amount: plan.amount,
+      currency: plan.currency,
+      metadata: {
+        planId: plan.id,
+        checkoutType: 'qr',
+        imageUrl: qrCode.image_url,
+        shortUrl: qrCode.short_url ?? null,
+      },
+      idempotencyKey,
+    });
+  } catch (error) {
+    if (error.code !== '23505') throw error;
+    payment = await paymentRepository.findByIdempotencyKey(
+      userId,
+      PAYMENT_PROVIDERS.RAZORPAY,
+      idempotencyKey,
+    );
+    if (!payment) throw error;
+  }
+
+  await trackEvent(AMPLITUDE_EVENTS.STARTED_SUBSCRIPTION, userId, {
+    plan_id: plan.id,
+    amount: plan.amount,
+    checkout_type: 'qr',
+  });
+
+  return serializeQrCode(payment);
 };
 
 // Shared by both the verify endpoint and the webhook — whichever arrives
@@ -195,9 +297,16 @@ export const handleWebhook = async (rawBody, signature, parsedBody) => {
   const paymentEntity = payload?.payment?.entity;
   if (!paymentEntity) return;
 
+  const providerOrderId =
+    paymentEntity.order_id ||
+    paymentEntity.qr_code_id ||
+    paymentEntity.notes?.qrCodeId ||
+    paymentEntity.notes?.qr_code_id;
+  if (!providerOrderId) return;
+
   const payment = await paymentRepository.findByProviderOrderId(
     PAYMENT_PROVIDERS.RAZORPAY,
-    paymentEntity.order_id,
+    providerOrderId,
   );
   // Unknown order — ignore rather than error. A stray/irrelevant webhook
   // should never surface as a 4xx/5xx to Razorpay's retry logic.
