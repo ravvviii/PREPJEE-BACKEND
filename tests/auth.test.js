@@ -25,16 +25,26 @@ const TEST_ADMIN_EMAIL = 'phase4-test-admin@test.local';
 const TEST_ADMIN_PASSWORD = 'correct-horse-battery-staple';
 const TEST_SUPER_ADMIN_EMAIL = 'phase4-test-super-admin@test.local';
 const TEST_SUPER_ADMIN_PASSWORD = 'initial-super-admin-password';
+const TEST_USER_EMAIL = 'phase4-test-user@test.local';
+const TEST_USER_EMAIL_LINK = 'phase4-test-user-link@test.local';
+const TEST_USER_PASSWORD = 'correct-user-password';
+const ALL_TEST_EMAILS = [TEST_USER_EMAIL, TEST_USER_EMAIL_LINK];
 
 let app;
 
 const cleanupTestData = async () => {
   await pool.query(
-    `DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE phone = ANY($1))`,
-    [ALL_TEST_PHONES],
+    `DELETE FROM refresh_tokens
+     WHERE user_id IN (
+       SELECT id FROM users WHERE phone = ANY($1) OR email = ANY($2)
+     )`,
+    [ALL_TEST_PHONES, ALL_TEST_EMAILS],
   );
   await pool.query('DELETE FROM otp_codes WHERE phone = ANY($1)', [ALL_TEST_PHONES]);
-  await pool.query('DELETE FROM users WHERE phone = ANY($1)', [ALL_TEST_PHONES]);
+  await pool.query('DELETE FROM users WHERE phone = ANY($1) OR email = ANY($2)', [
+    ALL_TEST_PHONES,
+    ALL_TEST_EMAILS,
+  ]);
   await pool.query('DELETE FROM admins WHERE email = ANY($1)', [
     [TEST_ADMIN_EMAIL, TEST_SUPER_ADMIN_EMAIL],
   ]);
@@ -124,6 +134,93 @@ test('POST /auth/verify-otp succeeds with the correct code, creates the user, re
   assert.ok(body.data.refreshToken);
 
   issuedRefreshToken = body.data.refreshToken;
+});
+
+let issuedEmailRefreshToken;
+let emailUserId;
+
+test('POST /auth/register creates an email/password user and returns tokens', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: {
+      email: TEST_USER_EMAIL.toUpperCase(),
+      password: TEST_USER_PASSWORD,
+      name: 'Phase 4 Email User',
+    },
+  });
+  const body = response.json();
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(body.data.user.email, TEST_USER_EMAIL);
+  assert.equal(body.data.user.phone, null);
+  assert.equal(body.data.user.name, 'Phase 4 Email User');
+  assert.ok(body.data.accessToken);
+  assert.ok(body.data.refreshToken);
+  issuedEmailRefreshToken = body.data.refreshToken;
+  emailUserId = body.data.user.id;
+
+  const row = await pool.query('SELECT phone, password_hash FROM users WHERE id = $1', [
+    emailUserId,
+  ]);
+  assert.equal(row.rows[0].phone, null);
+  assert.ok(row.rows[0].password_hash);
+});
+
+test('POST /auth/register rejects a duplicate email', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: { email: TEST_USER_EMAIL, password: TEST_USER_PASSWORD },
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.json().error.code, 'EMAIL_EXISTS');
+});
+
+test('POST /auth/login rejects an unknown email and a wrong password identically', async () => {
+  const unknownEmailResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email: 'unknown-user@test.local', password: TEST_USER_PASSWORD },
+  });
+  const wrongPasswordResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email: TEST_USER_EMAIL, password: 'wrong-user-password' },
+  });
+
+  assert.equal(unknownEmailResponse.statusCode, 401);
+  assert.equal(wrongPasswordResponse.statusCode, 401);
+  assert.equal(unknownEmailResponse.json().error.code, 'INVALID_CREDENTIALS');
+  assert.equal(wrongPasswordResponse.json().error.code, 'INVALID_CREDENTIALS');
+});
+
+test('POST /auth/login succeeds with email and password', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email: TEST_USER_EMAIL.toUpperCase(), password: TEST_USER_PASSWORD },
+  });
+  const body = response.json();
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.user.id, emailUserId);
+  assert.equal(body.data.user.email, TEST_USER_EMAIL);
+  assert.ok(body.data.accessToken);
+  assert.ok(body.data.refreshToken);
+});
+
+test('POST /auth/refresh works for email/password sessions', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/refresh',
+    payload: { refreshToken: issuedEmailRefreshToken },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.ok(response.json().data.accessToken);
+  assert.ok(response.json().data.refreshToken);
 });
 
 test('POST /auth/refresh rotates the refresh token and kills the old one', async () => {

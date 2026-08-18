@@ -42,6 +42,16 @@ export const createWithGoogle = async ({ googleId, email, name, avatarUrl }) => 
   return rows[0];
 };
 
+export const createWithPassword = async ({ email, passwordHash, name }) => {
+  const { rows } = await query(
+    `INSERT INTO users (email, password_hash, name)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [email, passwordHash, name ?? null],
+  );
+  return rows[0];
+};
+
 // Attaches a Google identity to an existing (phone-created) account — used
 // only when that account's email is confirmed-verified by Google and
 // matches exactly (see auth.service.js's loginWithGoogle).

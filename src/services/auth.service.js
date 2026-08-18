@@ -161,6 +161,41 @@ export const loginWithGoogle = async (idToken) => {
   return issueSession(user, 'google');
 };
 
+export const registerWithEmail = async ({ email, password, name }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await userRepository.findByEmail(normalizedEmail);
+  if (existing) {
+    throw new AppError('An account with this email already exists', HTTP_STATUS.CONFLICT, 'EMAIL_EXISTS');
+  }
+
+  let user;
+  try {
+    user = await userRepository.createWithPassword({
+      email: normalizedEmail,
+      passwordHash: await hashPassword(password),
+      name: name?.trim() || null,
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      throw new AppError('An account with this email already exists', HTTP_STATUS.CONFLICT, 'EMAIL_EXISTS');
+    }
+    throw error;
+  }
+
+  return issueSession(user, 'email');
+};
+
+export const loginWithEmail = async ({ email, password }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await userRepository.findByEmail(normalizedEmail);
+
+  if (!user?.password_hash || !(await comparePassword(password, user.password_hash))) {
+    throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED, 'INVALID_CREDENTIALS');
+  }
+
+  return issueSession(user, 'email');
+};
+
 export const refreshUserSession = async (oldRefreshToken) => {
   let payload;
   try {

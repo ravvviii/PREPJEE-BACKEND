@@ -31,6 +31,28 @@ export const googleLogin = async (request, reply) => {
   );
 };
 
+export const register = async (request, reply) => {
+  const { user, accessToken, refreshToken } = await authService.registerWithEmail(request.body);
+  reply.code(201).send(
+    success({
+      accessToken,
+      refreshToken,
+      user: { id: user.id, phone: user.phone, name: user.name, email: user.email },
+    }),
+  );
+};
+
+export const login = async (request, reply) => {
+  const { user, accessToken, refreshToken } = await authService.loginWithEmail(request.body);
+  reply.send(
+    success({
+      accessToken,
+      refreshToken,
+      user: { id: user.id, phone: user.phone, name: user.name, email: user.email },
+    }),
+  );
+};
+
 export const refresh = async (request, reply) => {
   const { refreshToken } = request.body;
   const result = await authService.refreshUserSession(refreshToken);
