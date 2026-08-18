@@ -1,7 +1,17 @@
-import { sendOtp, verifyOtp, googleLogin, refresh, logout } from '../controllers/auth.controller.js';
+import {
+  sendOtp,
+  verifyOtp,
+  googleLogin,
+  register,
+  login,
+  refresh,
+  logout,
+} from '../controllers/auth.controller.js';
 
 const phoneSchema = { type: 'string', pattern: '^\\+[1-9]\\d{7,14}$' };
 const otpSchema = { type: 'string', pattern: '^\\d{6}$' };
+const emailSchema = { type: 'string', format: 'email', maxLength: 254 };
+const passwordSchema = { type: 'string', minLength: 8, maxLength: 128 };
 
 export default async function authRoutes(fastify) {
   fastify.post(
@@ -36,6 +46,47 @@ export default async function authRoutes(fastify) {
       },
     },
     verifyOtp,
+  );
+
+  fastify.post(
+    '/auth/register',
+    {
+      schema: {
+        description: 'Create a user account with email and password, then return tokens',
+        tags: ['auth'],
+        body: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: emailSchema,
+            password: passwordSchema,
+            name: { type: 'string', minLength: 1, maxLength: 120 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    register,
+  );
+
+  fastify.post(
+    '/auth/login',
+    {
+      schema: {
+        description: 'Sign in with email and password',
+        tags: ['auth'],
+        body: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: emailSchema,
+            password: passwordSchema,
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    login,
   );
 
   fastify.post(
